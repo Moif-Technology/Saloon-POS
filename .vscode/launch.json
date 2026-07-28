@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "AdminMainDesktop (Flutter)",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "AdminMainDesktop (Flutter) (profile)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "AdminMainDesktop (Flutter) (release)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}
