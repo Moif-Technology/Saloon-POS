@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_app/utils/kot_reset_utils.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
 import 'package:my_app/utils/privilege_utils.dart';
+import 'package:my_app/utils/sessionManager.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -449,16 +450,39 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                         ref.read(selectedQtyProvider)) ??
                                     1;
 
-                                final existingIndex =
-                                    selectedProducts.indexWhere(
-                                  (item) =>
-                                      item["ProductID"] == product["ProductID"],
-                                );
-
                                 final isReturn = ref.read(returnModeProvider);
                                 ref
                                     .read(lastReturnModeProvider.notifier)
                                     .state = isReturn;
+
+                                // Whoever is signed in at the till performed the
+                                // work. staffID is the BUSINESS staff id, which
+                                // is exactly what ops.salon_job_child.stylist_id
+                                // and sales_child.stylist_id reference — not the
+                                // surrogate PK the JWT carries in `sub`.
+                                final stylistId =
+                                    SessionManager().staffID?.trim() ?? '';
+                                final lineType =
+                                    (product["LineType"] ?? "PRODUCT")
+                                        .toString();
+
+                                // Merge on the whole identity of a line, not on
+                                // ProductID alone. Two cuts by two stylists are
+                                // two lines, each with its own commission; so
+                                // are a sale and a return of the same product.
+                                // Collapsing them by product id made per-line
+                                // stylist assignment impossible to express.
+                                final existingIndex =
+                                    selectedProducts.indexWhere(
+                                  (item) =>
+                                      item["ProductID"] ==
+                                          product["ProductID"] &&
+                                      (item["StylistID"] ?? "") == stylistId &&
+                                      (item["LineType"] ?? "PRODUCT") ==
+                                          lineType &&
+                                      (item["isReturn"] ?? "false") ==
+                                          (isReturn ? "true" : "false"),
+                                );
 
                                 if (existingIndex != -1) {
                                   int currentQty = int.tryParse(
@@ -473,6 +497,10 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                   product["quantity"] = selectedQty.toString();
                                   product["isReturn"] =
                                       isReturn ? "true" : "false";
+                                  product["StylistID"] = stylistId;
+                                  product["StylistName"] =
+                                      SessionManager().staffName ?? '';
+                                  product["LineType"] = lineType;
                                   selectedProducts.add(product);
                                 }
 

@@ -54,6 +54,75 @@ Verified by live HTTP against a server on :5011 with the local DB:
 The salon tenant is **company 2** — the exact second-tenant scenario that would
 have collided on `ops.kot_master`. Salon's own tables handled it.
 
+## Production facts (read-only inspection, 2026-07-28)
+
+Verified against the 5433 tunnel with `SET default_transaction_read_only = on`:
+
+- **Migration 104 IS NOW APPLIED to production** (2026-07-28, at the user's explicit
+  request, after the risk was flagged and reaffirmed). Verified after:
+  salon tables created, software type 8 = SALON, 57/161 features granted,
+  `chk_station_type` widened, `sales_child.stylist_id`+`line_type` added,
+  `product_master.default_duration_minutes` added.
+  **Existing tenants confirmed untouched:** feature counts for types 1-7 unchanged
+  (152/152/152/152/152/161/9), `product_type` still mixed case
+  (Stock 55 / Non-stock 7 / Service 2 — NOT rewritten), row counts unchanged
+  (7 stations, 63 sales_child, 64 products, 4 companies).
+  Rollback if needed: `node scripts/run-migration.mjs 104_salon_pos.down.sql`.
+- **A salon tenant IS now seeded on production**: `company_id = 5`, code `SALON01`,
+  name "Salon", software type 8, station 90 (`SALON_POS`), 4 chairs, 6 services,
+  2 retail products, 1 admin + 2 stylists (Maya, Sara). Admin logs in as
+  `saloon@gmail.com`, `email_verified = TRUE`.
+  Credentials are NOT recorded in this repo — ask the owner.
+  Existing companies 1-4 were not modified.
+
+  > **Security note:** the admin password was set to a short numeric string at the
+  > owner's explicit instruction, on a production database. Change it before this
+  > tenant handles real customer data. Stylist PINs are regenerated on every
+  > `seed-salon-tenant.mjs` run, so a re-run invalidates the previous ones.
+
+- `seed-salon-tenant.mjs` now takes `--code --name --login --email --password
+  --station --verified --dry`. With no `--password` it generates a strong one and
+  prints it once (never stored). PINs are always regenerated on every run.
+
+### Entitlements: how to actually disable a feature (learned the hard way)
+
+`core.software_type_feature.is_granted = FALSE` **cannot disable anything.**
+`applySoftwareTypeScope` (entitlement.service.js:223) builds:
+- `allowed` = every row for the software type → the feature keeps the **plan's** value
+- `granted` = rows with `is_granted = TRUE` → force-set to TRUE
+
+So `is_granted = FALSE` means only "not force-granted". With the `pro` plan
+enabling everything, all 162 features resolved TRUE for the salon tenant even
+after 11 were "revoked". Migration 104 originally did this and had zero effect;
+that step is now replaced by a comment explaining why.
+
+**The real lever is `core.tenant_feature_override` (`is_enabled = FALSE`)**,
+applied LAST at entitlement.service.js:274. It is per-COMPANY, so it lives in
+`seed-salon-tenant.mjs`, not in the migration. Verified on production: salon
+company 5 resolves **151/162** features — the 11 restaurant ones off,
+`pos.kot`/`pos.tables`/`pos.areas`/`backoffice.staff` still on.
+
+### Backoffice access for the salon tenant — confirmed working
+
+`saloon@gmail.com` logs into ERP_frontend and **can manage staff**:
+`backoffice.staff` = ON, and `backoffice.staff.view/edit/create` all present
+(612 permissions total). No server restart needed for this — `/api/auth/login`
+and `/api/staff` predate the salon work. Only the `/api/salon-pos/*` routes need
+the API server restarted.
+
+`ERP_frontend/.env` → `VITE_API_BASE_URL=http://localhost:5010` (which is the
+production tunnel via api/.env); `.env.production` → `https://api.moifone.com`.
+- Production is a **different dataset** from local: 4 companies (TEST11, TEST22,
+  SHOP13, SHOP24), all `software_type_id = 2` (POS). Local has 1 company, type 4.
+- All migration-104 prerequisites exist on production (`core.software_type_feature`,
+  `core.feature_master` with the same 9 packs, `ops.sales_child`,
+  `core.station_master`, `core.product_master`), so 104 would apply cleanly.
+- **`core.product_master.product_type` on production is MIXED CASE**: `Stock` (55),
+  `Non-stock` (7), `Service` (2). This vindicates dropping the `UPPER(TRIM())`
+  rewrite from 104 — it would have mangled `Non-stock` → `NON-STOCK` across 62 live
+  rows. Salon matches case-insensitively instead.
+- `garage.job_card_master` / `job_card_child` exist but hold **0 rows**.
+
 ## Decisions locked (do not re-litigate)
 
 | # | Decision | Choice |
@@ -62,7 +131,8 @@ have collided on `ops.kot_master`. Salon's own tables handled it.
 | D2 | Booking | Walk-in first. `appointment_id` + `start_time`/`end_time` exist so booking is additive later |
 | D3 | Backend shape | `api/src/pos/salon/` mounted at `/api/salon-pos`, **reusing** restaurant controllers for auth/params/privileges rather than forking 1,950 lines |
 | D4 | Stylist | Job-level `primary_stylist_id` that lines inherit, overridable per line |
-| D5 | Job tables | **New** `ops.salon_job_master` / `salon_job_child` with composite `(company_id, job_id)` keys — NOT reusing `ops.kot_master` |
+| D5 | Job tables | **New** `ops.salon_job_master` / `salon_job_child` with composite `(company_id, job_id)` keys — NOT reusing `ops.kot_master`, and NOT reusing `garage.job_card_*` (see D6) |
+| D6 | Garage job cards rejected | `garage.job_card_child` has **no `product_id`, no `qty`, no tax columns**, and `reg_no` + `workshop_id` are NOT NULL — it models vehicle labour, cannot represent a retail line, and has **no FK to its master**. Reusing it would mean a vehicle registration on every haircut. Both tables are empty (0 rows), so there is no data to inherit either. |
 
 **Why D5:** `ops.kot_master`'s PK is `kot_master_id` alone, but ids are allocated
 per-company `MAX+1` (`kot.repository.js:5-21`). Company 2's job #1 collides with
@@ -102,6 +172,214 @@ api/package.json                        migrate, migrate:salon, migrate:salon:do
 
 ---
 
+## Device enrollment + PIN login — BACKEND DONE (2026-07-28)
+
+Mirrors the counter-pos flow. All four steps verified live on local:
+
+| Step | Endpoint | Verified |
+|---|---|---|
+| 1 | `POST /api/salon-pos/device/stations` — admin creds → SALON_POS tills | returns station 90 |
+| 2 | `POST /api/salon-pos/device/enroll` — admin creds + stationId + deviceToken | pairs device |
+| 3 | `POST /api/salon-pos/staff-list` — **deviceToken** (not companyId) | Maya + Sara only (staff WITH pins) |
+| 4 | `POST /api/salon-pos/pin-login` — deviceToken + companyId + staffId + pin | POS-scoped token |
+
+**This fixed the token-scope gap.** PIN login uses `buildTokensForPOSDevice`, which
+signs `{"sub":"48","cid":"2","sid":90,"scope":"pos"}` — a genuinely POS-scoped
+token. Verified: a POS token hitting `/api/staff/members` now returns
+`"POS token cannot access ERP routes"`. That isolation never engaged before.
+
+Session type is now per-path and must stay that way:
+- PIN/device login → POS-scoped token → register `'pos'`
+- username/password login → ERP-scoped token → register `'erp'`
+Crossing them is exactly restaurant's "Session expired" bug.
+
+Negative paths verified: no deviceToken → `NO_DEVICE_TOKEN`; unknown device →
+`NOT_ENROLLED`; wrong PIN → `BAD_PIN`; device/company mismatch → `WRONG_COMPANY`;
+non-admin enroll → `BAD_CREDENTIALS`.
+
+`src/pos/salon/services/auth.service.js` reuses counter-pos's `device.repository.js`
+and `staff.repository.js` (generic SQL over shared tables) rather than duplicating.
+
+### STILL TO DO — the Flutter screens for this
+
+Backend is ready; **no Flutter UI exists for enrollment or PIN login yet.**
+`SalonPOS/lib/screens/` has only `login_screen.dart` (username/password) and
+`waiter_login_screen.dart` (entirely commented out).
+
+Counter-pos's equivalents are React, not Flutter — `Counter-pos/src/pages/EnrollPage.jsx`
+and `LoginPage.jsx` are worth reading for the UX, but the screens must be written
+fresh in Dart. Needed:
+1. **Enroll screen** — admin email + password → fetch stations → pick one → enroll.
+   Persist `deviceToken` (generate a UUID once, store in shared_preferences).
+2. **Staff picker + PIN pad** — call `/staff-list` with the stored deviceToken,
+   show staff tiles, then a numeric PIN pad → `/pin-login`.
+3. **Routing** — on launch, if no deviceToken stored → Enroll; else → staff picker.
+
+---
+
+## Mock data removed, app wired to the salon API (2026-07-28)
+
+- `api_config.dart`: `useMockData` now `bool.fromEnvironment('MOCK', defaultValue: false)`
+  and `baseURL` is `String.fromEnvironment('API_BASE', defaultValue: 'http://localhost:5010')`.
+  Mock mode can never ship by accident; switch per run:
+  `flutter run --dart-define=MOCK=true --dart-define=API_BASE=http://host:5010`
+- New `posBasePath = '/api/salon-pos'` constant. All 11 hardcoded `/api/pos/`
+  literals in `api_service.dart` now use it, and `/kot/*` became `/job/*`.
+
+### Two schema traps found while wiring this
+
+1. **A POS-scoped token could not reach the catalogue.** `/api/groups`,
+   `/api/products`, `/api/areas`, `/api/tables`, `/api/customers`, `/api/sub-groups`
+   sit outside `POS_ALLOWED_PREFIXES`, so the grid, category strip and chair picker
+   all came back 403 the moment PIN login started issuing real POS-scoped tokens.
+   Fixed by adding a `POS_ALLOWED_CATALOGUE` list in `authMiddleware.js` (path is
+   now matched with the query string stripped). `/api/staff` deliberately NOT
+   whitelisted — POS gets people from `/staff-list` and `/stylists`.
+
+2. **The station id must ALSO exist as a branch id.** Post-085, POS masters are
+   filtered by station id but passed to a `branch_id` column that has an FK to
+   `core.branch_master` (`area.service.js:44`). Station 90 with no branch 90 =
+   `fk_area_master_branch` violation. The salon now uses **station 2 + branch 2**,
+   matching how migration 085 kept station ids equal to old branch ids.
+   Quirk to know: `areas` are read at `branch_id = stationId`, but `groups` and
+   `tables` are read at `branch_id = 1`. Not consistent across endpoints — the
+   seed writes each where its own endpoint looks.
+
+### Why backoffice saw no areas (fixed)
+
+A company created AFTER migration 085 has **no BACKOFFICE station**. 085 creates
+`station_id = 1` per company, but only for companies that existed when it ran.
+Backoffice staff have `branch_id = 1`, which resolves to station 1 — missing — so
+`/api/areas` answered `"Invalid station for this company"` for every backoffice
+user of the salon tenant. Products and groups were unaffected (they don't
+station-check).
+
+Seed now creates BOTH stations: `1 = BACKOFFICE`, `2 = SALON_POS`. It also writes
+areas under **both** station scopes, because areas are read at the caller's
+station id — backoffice on 1, till on 2.
+
+An orphan `station_id = 90` from an earlier run was soft-deleted (`is_deleted`,
+not dropped — `pos_device_enrollment` and salon jobs can reference station ids).
+
+**Any new tenant created outside this script hits the same trap.** If backoffice
+says "Invalid station for this company", check for a BACKOFFICE station row first.
+
+### Salon data now seeded (local company 2, production company 5)
+
+2 areas (Main Floor, VIP Room) · 8 chairs · 5 groups (Hair, Nails, Skin & Spa,
+Packages, Retail) · 9 subgroups · **25 products = 20 SERVICE + 5 retail STOCK**.
+Verified through a real POS token: areas 2, tables 8, groups 5, products 25.
+
+---
+
+## Gap-closing pass (2026-07-28, later session)
+
+Four items that were open above are now done and verified against the running
+API on :5010 (which points at PRODUCTION — see the warning at the top).
+
+### 1. The UI came up blank — root cause was NOT missing data
+
+`hasPosFeature` treated a feature code the server does not publish as *denied*.
+**35 of the 88 codes the UI checks have no row in `core.feature_master` at all**
+— every `pos.ui.*`, most `pos.kot.*`, `pos.order_list`, `pos.price_change`. So
+"162/162 features ON" was true and irrelevant.
+
+`pos.ui.groups_panel` being one of them is why the product grid was empty:
+`center_panel.dart` returns an empty box without it, so no group chip renders,
+and products are only fetched when a group is tapped. The empty grid was a
+*symptom*, two steps downstream.
+
+Fixed in `lib/utils/privilege_utils.dart` — three states now, only one hides:
+not-loaded → show, absent → show, present-and-`false` → hide. Real entitlement
+denials still work. Same treatment for `isControlEnabled`.
+
+Five codes were plain name mismatches and now point at what the server actually
+sends: `pos.kot_join_split`, `pos.item_cancel`, `pos.cash_payment`,
+`pos.card_payment`, `pos.credit`.
+
+### 2. Settlement — DONE
+
+`POST /api/salon-pos/sales/settle`, gated on `requireFeature('pos.settlement')`.
+
+- **Migration 105** adds `ops.sales_master.salon_job_id` and
+  `ops.salon_job_master.sales_id` (composite FKs, both directions), a partial
+  unique index so one job can only ever make one bill, a domain check on
+  `sales_child.line_type`, and `ix_sales_child_stylist` for commission reports.
+  Applied to **local and production**. A `.down.sql` exists.
+- `kot_master_id` is deliberately NOT reused for salon jobs — reports read it as
+  a `kot_master` reference and the ids would collide within a company.
+- Every bill line carries `stylist_id` + `line_type`. A missing stylist is
+  filled from the job line, then the job's primary stylist; a SERVICE line with
+  no stylist after that is **rejected**, not written as NULL.
+- The job row is locked `FOR UPDATE` for the transaction, so two tills cannot
+  both pass the not-settled check. Verified: second settle returns 409
+  `ALREADY_SETTLED`.
+- `kot_child_id` on the bill line stores the salon job **line** id — that is the
+  link commission reporting walks back through.
+
+Verified end to end: 3-line job with two different stylists → bill written,
+job flipped SETTLED with `end_time`, payment split written, and this rolls up
+correctly:
+
+```sql
+SELECT s.staff_name, sc.line_type, SUM(sc.line_total)
+  FROM ops.sales_child sc JOIN core.staff_master s
+    ON s.company_id = sc.company_id AND s.staff_id = sc.stylist_id
+ GROUP BY 1, 2;
+```
+
+Test rows were deleted afterwards — company 5 has no jobs or bills.
+
+### 3. Cart composite key (B6) — DONE
+
+`home_screen.dart` merged by `ProductID` alone. Now merges on
+**ProductID + StylistID + LineType + isReturn**, so two stylists doing the same
+service are two lines with two commissions (and a sale/return pair no longer
+collapses either — that was a second, unnoticed bug in the same line).
+
+Lines are stamped with the signed-in stylist on add. `SessionManager().staffID`
+is the **business** staff id, which is exactly what `stylist_id` references —
+not the surrogate PK the JWT carries in `sub`.
+
+`StylistID`/`LineType` now flow cart → `/job/save` → `/sales/settle`.
+`productRowForPos` derives `LineType` from `productType` case-insensitively
+(the column is free-text and holds mixed case across tenants).
+
+### 4. Software type registration — DONE, and made data-driven
+
+`SOFTWARE_TYPE_ID_MAP` stopped at `ERP: 6`, so registering SERVICE or SALON
+produced a company with `software_type_id` NULL and no feature scoping at all.
+A second hardcoded list in `plan.service.js` fed the signup page and had the
+same gap.
+
+Both now read `core.software_type_master`
+(`companyRepo.findSoftwareTypeIdByCode`, `planRepo.listActiveSoftwareTypes`).
+**Adding a software type is a data change, not a code change** — the map had
+already drifted twice. Marketing bullets stay in code as an enrichment keyed by
+`software_code`; an unknown code still shows, just without bullets.
+
+`/api/plans/registration-options` now returns SALON and SERVICE. The controller
+was also silently returning `{}` — it never awaited the (previously sync) call.
+
+### 5. Sub-groups at the till — DONE
+
+`biz.sub_group_master` is `UNIQUE (company_id, sub_group_id)` — company-wide, not
+per branch — so a sub-group lives at exactly one branch and no other branch can
+reuse the id. Listing them *by* branch could therefore only ever hide rows, and
+it hid all nine from the till (POS passes station 2 where the rows carry
+branch 1). Duplicating is impossible under the constraint; offset ids would stop
+matching `product_master.subgroup_id`, which stores the base id company-wide.
+
+`listSubGroupsByCompanyBranch` now lists company-wide, matching the constraint.
+Checked first: **no company in either database has sub-groups under more than
+one branch**, so no tenant loses separation. `branchId` is still validated.
+
+Chairs *are* branch-scoped and were genuinely missing — the seed now writes
+`table_master` under both station scopes. `/api/tables?branchId=2` returns 14
+(was 0).
+
+---
+
 ## NEXT STEP — start here
 
 Local is already migrated and seeded. To bring the environment back up:
@@ -111,14 +389,11 @@ cd api
 DATABASE_URL="postgresql://postgres:admin@localhost:5432/moifone_uae" PORT=5011 node src/index.js
 ```
 
-Credentials: `salonadmin` / `Salon@123` · company **2** · station **90** ·
-stylists Maya (staffId 2, PIN 1111) and Sara (staffId 3, PIN 2222).
+Local: company **2**, station **2**. Production: company **5**, station **2**,
+login `saloon@gmail.com`. **PINs rotate on every re-seed** — read the seed output,
+do not trust a PIN written down here.
 
-Pick up with **settlement** (`POST /api/salon-pos/sales/settle`) or the Flutter
-wiring. Both are described under NOT DONE.
-
-**Production still needs migration 104 + seed** when you decide to deploy. Do that
-deliberately, not by accident — see the warning at the top.
+Remaining work is under NOT DONE. Retail stock decrement is the most consequential.
 
 ---
 
@@ -126,12 +401,12 @@ deliberately, not by accident — see the warning at the top.
 
 | Item | Notes |
 |------|-------|
-| **Settlement** | `/api/salon-pos/sales/settle` does not exist. Needs to write `ops.sales_master`/`sales_child` incl. the `stylist_id` + `line_type` columns 104 added. Deliberately not half-built. |
-| **Production migration** | 104 + seed applied to LOCAL only. Production untouched. |
-| **Flutter side untouched** | Still `useMockData = true`, still `/api/pos/` paths, still named `my_app` |
-| **Cart composite key (B6)** | `home_screen.dart:455` merges lines by `ProductID` alone, so two stylists doing the same service collapse into one line. **D4 cannot work until this is fixed.** This is the first Flutter task. |
+| **Retail stock decrement** | POS never writes `product_inventory` (verified: zero writes in `src/pos/`). Salon retail will not move stock. Pre-existing gap, now also salon's. **Biggest remaining hole.** |
+| **Stylist picker UI** | Lines inherit the signed-in stylist. There is no way to assign a *different* stylist per line from the POS screen — the backend supports it (`PATCH /job/:jobId/line/:lineId/stylist`) and the cart key now allows it, but nothing calls it. |
+| **Job save ignores tax rates** | `/job/save` returned `tax1: 0` for lines sent with `Tax1RateC: 5`. Settlement takes totals from the client so billing is correct, but the job's own stored totals under-report tax. |
+| **Missing feature codes** | The 35 codes in §1 are still absent from `core.feature_master`. The UI no longer breaks on them, but they cannot be sold or switched off per tenant until they exist as rows. |
 | **Tests** | None written. No CI exists in this repo. |
-| **Retail stock decrement** | POS never writes `product_inventory` (verified: zero writes in `src/pos/`). Salon retail will not move stock. Pre-existing gap, now also salon's. |
+| **Naming** | App is still `my_app`. |
 
 ---
 
@@ -147,9 +422,10 @@ deliberately, not by accident — see the warning at the top.
 3. **No migration ledger** — nothing records what has been applied. Re-run safety
    depends entirely on `IF NOT EXISTS` guards.
 4. **`software_type_id = 7` is SERVICE**, not free (migration 102:237). Salon is 8.
-   Also `SOFTWARE_TYPE_ID_MAP` in `core/services/registration.service.js` stops at
-   `ERP: 6` — missing both `SERVICE: 7` and `SALON: 8`, so no one can *register* as
-   a salon tenant through that path. **Not yet fixed.**
+   ~~`SOFTWARE_TYPE_ID_MAP` stops at `ERP: 6`~~ — **FIXED**, see the gap-closing
+   pass above. Both hardcoded lists now read `core.software_type_master`.
+   Migration 105 also exists in `api/database/migrations` only, so issue 2 below
+   still applies to it.
 5. **`/api/pos/*` public routes have no rate limiter** — salon's do now, restaurant's
    still do not. `pin-login` brute-forces a 4-6 digit PIN against every staff row.
 

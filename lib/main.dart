@@ -6,7 +6,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:my_app/utils/sessionManager.dart';
 import 'package:my_app/utils/sessionStorage.dart';
-import 'screens/login_screen.dart';
+// login_screen.dart (MainLoginPage) is intentionally no longer imported here:
+// the salon till now enters through SalonAuthGate (enroll -> staff PIN). The
+// file is kept so the username/password page can be routed to if needed.
+import 'package:my_app/screens/salon_auth_gate.dart';
 import 'package:my_app/screens/session_bootstrap_wrapper.dart';
 import 'package:my_app/core/update/update_gate.dart';
 
@@ -132,6 +135,41 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  /// Persist the /pin-login session, then rebuild so `hasValidSession` sends the
+  /// app into SessionBootstrapWrapper. Mirrors what MainLoginPage does after a
+  /// username/password login, so both entry points leave identical state behind.
+  Future<void> _onPinLoggedIn(Map<String, dynamic> session) async {
+    final stationId = (session['stationId'] ?? '').toString();
+    final staffName = (session['staffName'] ?? '').toString();
+    final staffID = (session['staffID'] ?? '').toString();
+
+    await SessionStorage.saveSession(
+      stationId,
+      staffName,
+      staffID,
+      accessToken: session['accessToken']?.toString(),
+      refreshToken: session['refreshToken']?.toString(),
+      subscription: session['subscription'] as Map<String, dynamic>?,
+      features: session['features'] as Map<String, dynamic>?,
+      limits: session['limits'] as Map<String, dynamic>?,
+      permissions: session['permissions'] as List<dynamic>?,
+    );
+
+    SessionManager().setSession(
+      stationId: stationId,
+      staffName: staffName,
+      staffID: staffID,
+      accessToken: session['accessToken']?.toString(),
+      refreshToken: session['refreshToken']?.toString(),
+      subscription: session['subscription'] as Map<String, dynamic>?,
+      features: session['features'] as Map<String, dynamic>?,
+      limits: session['limits'] as Map<String, dynamic>?,
+      permissions: session['permissions'] as List<dynamic>?,
+    );
+
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -173,8 +211,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       },
 
       home: UpdateGate(
-        child:
-            hasValidSession ? const SessionBootstrapWrapper() : MainLoginPage(),
+        child: hasValidSession
+            ? const SessionBootstrapWrapper()
+            // Salon till flow: unenrolled devices enroll first, then staff sign
+            // in by PIN. The old username/password page (MainLoginPage) is still
+            // in the tree and reachable, but is no longer the default entry.
+            : SalonAuthGate(onLoggedIn: _onPinLoggedIn),
       ),
     );
   }

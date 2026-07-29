@@ -61,7 +61,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> login(String login, String password) async {
     final response = await http.post(
-      Uri.parse('$baseURL/api/pos/login'),
+      Uri.parse('$baseURL$posBasePath/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'login': login, 'password': password}),
     );
@@ -83,7 +83,7 @@ class ApiService {
     final body = <String, dynamic>{'pin': pin, 'companyId': companyId};
     if (staffPk != null) body['staffId'] = staffPk;
     final response = await http.post(
-      Uri.parse('$baseURL/api/pos/pin-login'),
+      Uri.parse('$baseURL$posBasePath/pin-login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
@@ -102,7 +102,7 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> fetchPosStaffList(int companyId) async {
     final response = await http.post(
-      Uri.parse('$baseURL/api/pos/staff-list'),
+      Uri.parse('$baseURL$posBasePath/staff-list'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'companyId': companyId}),
     );
@@ -138,7 +138,7 @@ class ApiService {
   Future<Map<String, dynamic>> fetchParameters() async {
     final headers = await _headers();
     final response = await http.get(
-      Uri.parse('$baseURL/api/pos/parameters'),
+      Uri.parse('$baseURL$posBasePath/parameters'),
       headers: headers,
     );
     if (response.statusCode != 200) {
@@ -154,7 +154,7 @@ class ApiService {
   Future<List<Map<String, dynamic>>> fetchPrivileges() async {
     final headers = _bearerHeaders();
     final response = await http.get(
-      Uri.parse('$baseURL/api/pos/privileges'),
+      Uri.parse('$baseURL$posBasePath/privileges'),
       headers: headers,
     );
     if (response.statusCode == 401) throw Exception('Unauthorized.');
@@ -175,7 +175,7 @@ class ApiService {
   Future<void> savePosParameters(Map<String, dynamic> params) async {
     final headers = await _headers();
     final response = await http.put(
-      Uri.parse('$baseURL/api/pos/parameters'),
+      Uri.parse('$baseURL$posBasePath/parameters'),
       headers: {...headers, 'Content-Type': 'application/json'},
       body: jsonEncode(params),
     );
@@ -200,7 +200,7 @@ class ApiService {
   }) async {
     final headers = await _headers();
     final response = await http.put(
-      Uri.parse('$baseURL/api/pos/parameters/company-details'),
+      Uri.parse('$baseURL$posBasePath/parameters/company-details'),
       headers: headers,
       body: jsonEncode({
         'heading1': heading1,
@@ -368,6 +368,17 @@ class ApiService {
     final unit = m['unitName']?.toString() ?? '';
     final packQty = inv['packQty'] ?? m['packQty'] ?? 1;
 
+    // A salon line is either labour (SERVICE) or retail (PRODUCT). The backend
+    // decides that from core.product_master.product_type, which is free-text
+    // VARCHAR and holds mixed case across tenants ('Service', 'SERVICE',
+    // 'Stock'), so compare case-insensitively rather than on an exact match.
+    // Only SERVICE lines require a stylist, so getting this wrong means the
+    // settlement is rejected with SERVICE_NEEDS_STYLIST.
+    final productType =
+        (m['productType'] ?? m['ProductType'])?.toString().trim() ?? '';
+    final lineType =
+        productType.toUpperCase() == 'SERVICE' ? 'SERVICE' : 'PRODUCT';
+
     return {
       'ProductID': '$pid',
       'ProductCode': (m['productCode'] ?? m['ProductCode'])?.toString() ?? '',
@@ -380,6 +391,8 @@ class ApiService {
       'SubGroupID': '$subGroupId',
       'Unit': unit,
       'PackQty': '$packQty',
+      'ProductType': productType,
+      'LineType': lineType,
     };
   }
 
@@ -685,7 +698,7 @@ class ApiService {
   Future<Map<String, dynamic>> saveKot(Map<String, dynamic> payload) async {
     final headers = _bearerHeaders();
     final response = await http.post(
-      Uri.parse('$baseURL/api/pos/kot/save'),
+      Uri.parse('$baseURL$posBasePath/job/save'),
       headers: {...headers, 'Content-Type': 'application/json'},
       body: jsonEncode(payload),
     );
@@ -714,7 +727,7 @@ class ApiService {
     final params = <String, String>{};
     if (areaId != null && areaId.isNotEmpty) params['areaId'] = areaId;
     if (search != null && search.isNotEmpty) params['search'] = search;
-    final uri = Uri.parse('$baseURL/api/pos/kot/list')
+    final uri = Uri.parse('$baseURL$posBasePath/job/list')
         .replace(queryParameters: params.isEmpty ? null : params);
     final response = await http.get(uri, headers: headers);
     if (response.statusCode == 401) throw Exception('Unauthorized.');
@@ -737,7 +750,7 @@ class ApiService {
     if (id.isEmpty) {
       return {'success': true, 'data': <dynamic>[]};
     }
-    final uri = Uri.parse('$baseURL/api/pos/kot/${Uri.encodeComponent(id)}');
+    final uri = Uri.parse('$baseURL$posBasePath/job/${Uri.encodeComponent(id)}');
     final response = await http.get(uri, headers: headers);
     if (response.statusCode == 401) throw Exception('Unauthorized.');
     if (response.statusCode == 404) {
@@ -764,7 +777,7 @@ class ApiService {
       throw Exception(
           'Settlement payload is not valid JSON (check amounts are finite numbers): $e');
     }
-    final uri = Uri.parse('$baseURL/api/pos/sales/settle');
+    final uri = Uri.parse('$baseURL$posBasePath/sales/settle');
     final response = await http
         .post(
           uri,

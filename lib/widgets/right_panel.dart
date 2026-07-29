@@ -873,6 +873,11 @@ class _RightPanelState extends ConsumerState<RightPanel> {
           'AndroidPrint': p['AndroidPrint'] ?? 'PENDING',
           'KOTDisplayStatus': p['KOTDisplayStatus'] ?? 'PENDING',
           'qtyadd': p['qtyadd'] ?? '',
+          // Salon: who performed this line, and whether it is labour or retail.
+          // The backend rejects a SERVICE line with no stylist, so send the
+          // signed-in stylist as the fallback rather than omitting the key.
+          'StylistID': p['StylistID'] ?? SessionManager().staffID ?? '',
+          'LineType': p['LineType'] ?? 'PRODUCT',
         };
       }).toList();
       final sm = SessionManager();
@@ -1008,6 +1013,19 @@ class _RightPanelState extends ConsumerState<RightPanel> {
           'tax2AmountC': _asDouble(p['Tax2AmountC'] ?? p['tax2AmountC'] ?? 0),
           'tax3RateC': _asDouble(p['Tax3RateC'] ?? p['tax3RateC'] ?? 0),
           'tax3AmountC': _asDouble(p['Tax3AmountC'] ?? p['tax3AmountC'] ?? 0),
+          // Salon: settlement writes stylist_id and line_type onto every bill
+          // line, which is what per-stylist commission is computed from. These
+          // rows come back from the saved job, so they already carry both —
+          // lineId lets the server match the bill line to its job line exactly
+          // instead of guessing by product id.
+          'lineId': int.tryParse(
+                  (p['LineID'] ?? p['lineID'] ?? p['KotChildID'] ?? 0)
+                      .toString()) ??
+              0,
+          'stylistId': int.tryParse(
+                  (p['StylistID'] ?? p['stylistID'] ?? 0).toString()) ??
+              0,
+          'lineType': (p['LineType'] ?? p['lineType'] ?? '').toString(),
         };
       }).toList();
     } else {
@@ -1051,6 +1069,11 @@ class _RightPanelState extends ConsumerState<RightPanel> {
           'tax2AmountC': 0.0,
           'tax3RateC': 0.0,
           'tax3AmountC': 0.0,
+          // Salon: unsaved-cart path. No job line exists yet, so there is no
+          // lineId to send — the stylist and line type come straight off the
+          // cart row, stamped when the product was added.
+          'stylistId': int.tryParse(p['StylistID'] ?? '0') ?? 0,
+          'lineType': p['LineType'] ?? 'PRODUCT',
         };
       }).toList();
     }
@@ -1981,6 +2004,11 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                 p['KOTDisplayStatus'] ?? 'PENDING',
                             'qtyadd': p['qtyadd'] ?? '',
                             'dgvKOTChildID': p['dgvKOTChildID'] ?? '0',
+                            // Salon: see the note on the other Items builder.
+                            'StylistID': p['StylistID'] ??
+                                SessionManager().staffID ??
+                                '',
+                            'LineType': p['LineType'] ?? 'PRODUCT',
                           };
                         }).toList();
 

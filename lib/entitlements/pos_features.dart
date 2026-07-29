@@ -15,14 +15,19 @@ class PosFeature {
   static const kotReprint = 'pos.kot.reprint';
   static const kotDummyBill = 'pos.kot.dummy_bill';
   static const kotComments = 'pos.kot.comments';
-  static const kotJoinSplit = 'pos.kot.join_split';
-  static const kotItemCancel = 'pos.kot.item_cancel';
+  // These two are published by the API under flat names, not under the
+  // `pos.kot.` namespace. Spelling them the dotted way meant they resolved to
+  // "absent" and the Job Join / Item Cancel buttons could never appear.
+  static const kotJoinSplit = 'pos.kot_join_split';
+  static const kotItemCancel = 'pos.item_cancel';
   static const kotSaveWithoutArea = 'pos.kot.save_without_area';
 
   static const settlement = 'pos.settlement';
-  static const settlementCash = 'pos.settlement.cash';
-  static const settlementCard = 'pos.settlement.card';
-  static const settlementCredit = 'pos.settlement.credit';
+  // Payment methods are published as flat `pos.*_payment` codes; `pos.credit`
+  // is the same entitlement that gates credit sales elsewhere.
+  static const settlementCash = 'pos.cash_payment';
+  static const settlementCard = 'pos.card_payment';
+  static const settlementCredit = 'pos.credit';
   static const settlementDirect = 'pos.settlement.direct';
   static const settlementChange = 'pos.settlement.change';
   static const settlementUnsavedCart = 'pos.settlement.unsaved_cart';

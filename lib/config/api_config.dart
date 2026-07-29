@@ -1,10 +1,22 @@
 // lib/config/api_config.dart
 
-/// Set to true to use MockApiService (fake local data, no backend needed).
-/// Set to false to hit the real API at [baseURL].
-const bool useMockData = true;
+/// Mock mode. Defaults to FALSE so a mock build can never ship by accident.
+/// Turn it on per-run without editing source:
+///     flutter run --dart-define=MOCK=true
+const bool useMockData = bool.fromEnvironment('MOCK', defaultValue: false);
 
-const String baseURL = "http://192.168.1.144:5010"; // Use your local network IP
+/// API host. Override per-run without editing source:
+///     flutter run --dart-define=API_BASE=http://192.168.1.55:5010
+/// Production is https://api.moifone.com
+const String baseURL = String.fromEnvironment(
+  'API_BASE',
+  defaultValue: 'http://localhost:5010',
+);
+
+/// Base path for this POS product. Salon endpoints are under /api/salon-pos;
+/// restaurant's are under /api/pos. Kept in one place so switching product is
+/// not a hunt for string literals across api_service.dart.
+const String posBasePath = '/api/salon-pos';
 
 /// Legacy HMS toggle (kept for reference). **`ApiService` now uses the unified API only** for
 /// login, POS parameters, privileges list, groups, areas, and sub-groups; other features are
