@@ -13,6 +13,8 @@ import 'package:my_app/widgets/topPanelWidgets/ReportTab/salesVatReport.dart';
 import 'package:my_app/widgets/topPanelWidgets/top_panel_widgets_imports.dart';
 import 'package:my_app/utils/sessionStorage.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:my_app/widgets/appointment_selection_dialog.dart';
+import 'package:my_app/widgets/appointment_detail_panel.dart';
 
 class TopBar extends ConsumerWidget {
   static const Map<String, String> _dialogFeatureGate = {
@@ -407,6 +409,52 @@ class TopBar extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  void _openAppointmentsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => AppointmentSelectionDialog(
+        onAppointmentSelected: (appointmentId, customerId, stylistId) {
+          Navigator.pop(context);
+          _showAppointmentDetail(context, appointmentId, customerId, stylistId);
+        },
+        onNewWalkIn: () {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('New walk-in created. Start with area/table selection.'),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAppointmentDetail(BuildContext context, String appointmentId, String customerId, String stylistId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => Dialog(
+        child: SizedBox(
+          width: 600,
+          height: 700,
+          child: AppointmentDetailPanel(
+            appointmentId: appointmentId,
+            customerId: customerId,
+            stylistId: stylistId,
+            onCheckIn: (appointment) {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Checked in: ${appointment['customerName']}'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -1012,6 +1060,17 @@ class TopBar extends ConsumerWidget {
                     const PopupMenuItem<String>(
                         value: "Report View", child: Text("Report View")),
                 ],
+              ),
+              const SizedBox(width: 20),
+              ElevatedButton.icon(
+                onPressed: () => _openAppointmentsDialog(context),
+                icon: const Icon(Icons.calendar_today, size: 18),
+                label: const Text("Appointments"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF521C1D),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
               ),
               if (!isBaseVersion) const SizedBox(width: 20),
               if (!isBaseVersion && hasPosFeature(ref, 'pos.credit'))
