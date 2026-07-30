@@ -1632,4 +1632,34 @@ class MockApiService implements ApiService {
       },
     ];
   }
+
+  @override
+  Future<void> checkInAppointment(String appointmentId, String jobId) {
+    // TODO: implement checkInAppointment
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<String, dynamic>> createAppointment({required int customerId, required int stylistId, required String appointmentDate, required String appointmentTime, required int durationMinutes, List<int>? serviceIds, String? notes}) {
+    // TODO: implement createAppointment
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchAppointmentDetail(String appointmentId) {
+    // TODO: implement fetchAppointmentDetail
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchAppointmentsByDate(String date) {
+    // TODO: implement fetchAppointmentsByDate
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<String, dynamic>> getStylistAvailability(int stylistId, String date) {
+    // TODO: implement getStylistAvailability
+    throw UnimplementedError();
+  }
 }

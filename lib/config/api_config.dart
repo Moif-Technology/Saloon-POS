@@ -10,7 +10,7 @@ const bool useMockData = bool.fromEnvironment('MOCK', defaultValue: false);
 /// Production is https://api.moifone.com
 const String baseURL = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'http://localhost:5010',
+  defaultValue: 'http://192.168.1.55:5010',
 );
 
 /// Base path for this POS product. Salon endpoints are under /api/salon-pos;

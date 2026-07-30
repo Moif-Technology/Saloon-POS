@@ -960,4 +960,93 @@ class ApiService {
             : 'Settlement failed (HTTP ${response.statusCode})');
     throw Exception(msg);
   }
+
+  // Appointment endpoints (Phase 1 — Salon POS appointments)
+  Future<List<Map<String, dynamic>>> fetchAppointmentsByDate(String date) async {
+    final headers = await _headers();
+    final response = await http.get(
+      Uri.parse('$baseURL$posBasePath/appointments?date=$date'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      final data = _decode(response.body);
+      if (data is List) {
+        return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      if (data is Map && data['data'] is List) {
+        return (data['data'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> fetchAppointmentDetail(String appointmentId) async {
+    final headers = await _headers();
+    final response = await http.get(
+      Uri.parse('$baseURL$posBasePath/appointments/$appointmentId'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      final decoded = _decode(response.body);
+      return Map<String, dynamic>.from(decoded is Map ? decoded : {});
+    }
+    throw Exception('Failed to fetch appointment detail: ${response.statusCode}');
+  }
+
+  Future<Map<String, dynamic>> createAppointment({
+    required int customerId,
+    required int stylistId,
+    required String appointmentDate,
+    required String appointmentTime,
+    required int durationMinutes,
+    List<int>? serviceIds,
+    String? notes,
+  }) async {
+    final headers = await _headers();
+    final body = {
+      'customerId': customerId,
+      'stylistId': stylistId,
+      'appointmentDate': appointmentDate,
+      'appointmentTime': appointmentTime,
+      'durationMinutes': durationMinutes,
+      if (serviceIds != null) 'serviceIds': serviceIds,
+      if (notes != null) 'notes': notes,
+    };
+    final response = await http.post(
+      Uri.parse('$baseURL$posBasePath/appointments'),
+      headers: headers,
+      body: jsonEncode(body),
+    );
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final decoded = _decode(response.body);
+      return Map<String, dynamic>.from(decoded is Map ? decoded : {});
+    }
+    final err = response.statusCode == 409 ? 'Stylist unavailable at that time' : response.body;
+    throw Exception('Failed to create appointment: $err');
+  }
+
+  Future<Map<String, dynamic>> getStylistAvailability(int stylistId, String date) async {
+    final headers = await _headers();
+    final response = await http.get(
+      Uri.parse('$baseURL$posBasePath/stylists/$stylistId/availability?date=$date'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      final decoded = _decode(response.body);
+      return Map<String, dynamic>.from(decoded is Map ? decoded : {});
+    }
+    return {'availableSlots': [], 'bookedSlots': []};
+  }
+
+  Future<void> checkInAppointment(String appointmentId, String jobId) async {
+    final headers = await _headers();
+    final response = await http.post(
+      Uri.parse('$baseURL$posBasePath/appointments/$appointmentId/check-in'),
+      headers: headers,
+      body: jsonEncode({'jobId': jobId}),
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Failed to check in appointment: ${response.body}');
+    }
+  }
 }
