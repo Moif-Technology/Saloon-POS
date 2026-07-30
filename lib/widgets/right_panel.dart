@@ -80,7 +80,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
   int selectedTableChairs = 0;
   int selectedSearchIndex = -1;
 
-  String selectedOrderType = 'Take Away';
+  String selectedOrderType = 'Walk-In';
   final Map<String, List<String>> tableChairs = {};
   final TextEditingController searchController = TextEditingController();
   final FocusNode searchFocusNode = FocusNode();
@@ -444,16 +444,16 @@ class _RightPanelState extends ConsumerState<RightPanel> {
       padding: const EdgeInsets.all(6),
       child: Row(
         children: [
-          // Take Away button
+          // Walk-In button (parcel / counter area)
           if (takeAwayArea != null)
             Expanded(
               child: _buildOrderTypeBtn(
-                label: 'Take Away',
-                icon: Icons.takeout_dining_rounded,
+                label: 'Walk-In',
+                icon: Icons.person_outline_rounded,
                 isSelected: isTakeAwaySelected,
                 onTap: () => widget.onAreaSelected?.call(
                   takeAwayId ?? '',
-                  takeAwayArea['AreaName']?.toString() ?? 'Take Away',
+                  takeAwayArea['AreaName']?.toString() ?? 'Walk-In',
                 ),
                 accent: accent,
               ),
@@ -462,22 +462,22 @@ class _RightPanelState extends ConsumerState<RightPanel> {
           if (takeAwayArea != null && dineInArea != null)
             const SizedBox(width: 6),
 
-          // Dine In button
+          // Chair / floor button
           if (dineInArea != null)
             Expanded(
               child: _buildOrderTypeBtn(
-                label: 'Dine In',
-                icon: Icons.restaurant_rounded,
+                label: 'Chair',
+                icon: Icons.event_seat_rounded,
                 isSelected: isDineInSelected,
                 onTap: () => widget.onAreaSelected?.call(
                   dineInId ?? '',
-                  dineInArea['AreaName']?.toString() ?? 'Dine In',
+                  dineInArea['AreaName']?.toString() ?? 'Chair',
                 ),
                 accent: accent,
               ),
             ),
 
-          // Table dropdown when Dine In is active
+          // Chair dropdown when Chair section is active
           if (isDineInSelected && tableData.isNotEmpty) ...[
             const SizedBox(width: 6),
             SizedBox(width: 130, child: _buildBaseTableDropdown()),
@@ -565,7 +565,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
           isExpanded: true,
           hint: Row(
             children: [
-              Icon(Icons.table_restaurant_outlined,
+              Icon(Icons.event_seat_outlined,
                   size: 14, color: Colors.grey.shade500),
               const SizedBox(width: 4),
               Text('Table',
@@ -818,7 +818,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text(
-                'Settlement requires a saved KOT. Please load a KOT (takeaway/delivery/table) or save KOT first.'),
+                'Settlement needs a saved job. Load a job or tap Save Job first.'),
             backgroundColor: Colors.red),
       );
       return;
@@ -833,7 +833,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
       final cart = ref.read(cartSnapshotProvider);
       if (!canSaveKotWithoutArea && (areaId == null || areaId.isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select an Area')));
+            const SnackBar(content: Text('Please select a section')));
         return;
       }
       if (cart.isEmpty) {
@@ -853,11 +853,13 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         saveSub += st;
         saveTax += taxA;
         saveGrand += lt;
+        final name = p['ShortDescription'] ?? p['Description'] ?? '';
         return {
           'ProductID': p['ProductID'],
-          'BarCode': p['BarCode'] ?? '',
+          'BarCode': p['BarCode'] ?? p['Barcode'] ?? '',
           'UniqueProductID': p['UniqueProductID'] ?? '0',
-          'ItemName': p['ShortDescription'] ?? p['Description'] ?? '',
+          'ItemName': name,
+          'ShortDescription': name,
           'ItemCode': p['ItemCode'] ?? '',
           'Qty': qty.toString(),
           'PackQty': p['PackQty'] ?? '0',
@@ -865,19 +867,22 @@ class _RightPanelState extends ConsumerState<RightPanel> {
           'UnitPrice': rate.toString(),
           'SubTotal': st.toString(),
           'TaxPerc': taxP.toString(),
+          'Tax1Rate': taxP.toString(),
+          'Tax1RateC': taxP.toString(),
           'TaxAmount': taxA.toString(),
+          'Tax1AmountC': taxA.toString(),
           'ItemDisc': p['ItemDisc'] ?? '0',
+          'ItemDiscount': p['ItemDisc'] ?? '0',
           'LineTotal': lt.toString(),
           'dgvGrpID': p['GroupID'] ?? p['dgvGrpID'] ?? '0',
+          'GroupID': p['GroupID'] ?? p['dgvGrpID'] ?? '0',
           'Modifir': p['modifiers'] ?? '',
           'AndroidPrint': p['AndroidPrint'] ?? 'PENDING',
           'KOTDisplayStatus': p['KOTDisplayStatus'] ?? 'PENDING',
           'qtyadd': p['qtyadd'] ?? '',
-          // Salon: who performed this line, and whether it is labour or retail.
-          // The backend rejects a SERVICE line with no stylist, so send the
-          // signed-in stylist as the fallback rather than omitting the key.
           'StylistID': p['StylistID'] ?? SessionManager().staffID ?? '',
-          'LineType': p['LineType'] ?? 'PRODUCT',
+          'LineType': p['LineType'] ?? p['ProductType'] ?? 'PRODUCT',
+          'ProductType': p['ProductType'] ?? p['LineType'] ?? '',
         };
       }).toList();
       final sm = SessionManager();
@@ -885,8 +890,17 @@ class _RightPanelState extends ConsumerState<RightPanel> {
       final staffName = sm.staffName ?? '';
       final staffId = int.tryParse(sm.staffID ?? '0') ?? 0;
       final payload = {
+        'StationID': stationId,
+        'stationId': stationId,
         'mfAreaId': int.tryParse(areaId ?? '0') ?? 0,
+        'AreaID': int.tryParse(areaId ?? '0') ?? 0,
         'mfTableID': (tableId == null || tableId.isEmpty)
+            ? 0
+            : int.tryParse(tableId) ?? 0,
+        'ChairID': (tableId == null || tableId.isEmpty)
+            ? 0
+            : int.tryParse(tableId) ?? 0,
+        'TableID': (tableId == null || tableId.isEmpty)
             ? 0
             : int.tryParse(tableId) ?? 0,
         'mfChairNo':
@@ -894,8 +908,10 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         'ISWaiterMandatory': isWaiterMandatory,
         'mfCustomerID':
             (custId == null || custId.isEmpty) ? 0 : int.tryParse(custId) ?? 0,
+        'CustomerID':
+            (custId == null || custId.isEmpty) ? 0 : int.tryParse(custId) ?? 0,
+        'PrimaryStylistID': staffId,
         'gvCounterNo': stationId.toString(),
-        'StationID': stationId,
         'gvUserName': staffName,
         'gvCashierID': staffId,
         'txtDiscount': 0,
@@ -905,22 +921,26 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         'lblBillTotal': saveGrand,
         'txtNoofCustomer': 0,
         'txtRemarks': '',
-        'btnname': 'KotSave',
+        'btnname': 'JobSave',
         'Items': itemsPayload,
       };
       try {
         final result =
             await ApiService().saveKot(Map<String, dynamic>.from(payload));
         if (!mounted) return;
-        if (result['ok'] != true) {
+        if (result['ok'] != true && result['success'] != true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content:
-                    Text(result['msg']?.toString() ?? 'Failed to save KOT')),
+                content: Text(result['msg']?.toString() ??
+                    result['message']?.toString() ??
+                    'Failed to save job')),
           );
           return;
         }
-        final currentKotId = result['CurrentKOTID'];
+        final currentKotId = result['CurrentKOTID'] ??
+            result['currentJobId'] ??
+            result['jobId'] ??
+            result['kotMasterId'];
         final newKotId = currentKotId != null &&
                 int.tryParse(currentKotId.toString()) != null
             ? (int.tryParse(currentKotId.toString()) ?? 0)
@@ -946,14 +966,14 @@ class _RightPanelState extends ConsumerState<RightPanel> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                   content: Text(
-                      'KOT saved but failed to load details. Try opening settlement again.')),
+                      'Job saved but failed to load details. Try opening settlement again.')),
             );
             return;
           }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('Save KOT did not return a valid KOT ID.')),
+                content: Text('Save Job did not return a valid job ID.')),
           );
           return;
         }
@@ -961,7 +981,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Save KOT failed: $e'),
+              content: Text('Save Job failed: $e'),
               backgroundColor: Colors.red),
         );
         return;
@@ -1034,7 +1054,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text(
-                  'No items to settle. Load a KOT or add items and save KOT first.'),
+                  'No items to settle. Load a job or add items and tap Save Job first.'),
               backgroundColor: Colors.red),
         );
         return;
@@ -1627,7 +1647,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                       if (src == null || (src is List && src.isEmpty)) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('No KOT to print')));
+                              const SnackBar(content: Text('No job to print')));
                         }
                         return;
                       }
@@ -1644,7 +1664,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                       if (kotMasterId <= 0) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('No KOT to print')));
+                              const SnackBar(content: Text('No job to print')));
                         }
                         return;
                       }
@@ -1737,7 +1757,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         await web_print.printKOTWeb(
                           kotDetails: {'data': pending},
                           supplyType: supplyType,
-                          title: 'KITCHEN ORDER TICKET',
+                          title: 'JOB TICKET',
                         );
                         if (kotMasterId > 0) {
                           try {
@@ -1754,7 +1774,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         await WindowsNativeKOTPrinter.printKOT(
                           kotDetails: {'data': pending},
                           supplyType: supplyType,
-                          title: 'KITCHEN ORDER TICKET',
+                          title: 'JOB TICKET',
                           onError: (m) {
                             if (mounted) {
                               ScaffoldMessenger.of(context)
@@ -1776,7 +1796,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                       } else if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                             content: Text(
-                                'KOT print not available on this platform')));
+                                'Job print not available on this platform')));
                       }
                     },
                     onKotReprint: () {
@@ -1852,7 +1872,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                               ScaffoldMessenger.of(context)
                                                   .showSnackBar(const SnackBar(
                                                       content: Text(
-                                                          'No KOT to reprint')));
+                                                          'No job to reprint')));
                                             }
                                             return;
                                           }
@@ -1868,7 +1888,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                               kotDetails:
                                                   kotD.isNotEmpty ? kotD : actD,
                                               supplyType: supplyType,
-                                              title: 'Duplicate KOT',
+                                              title: 'Duplicate Job',
                                             );
                                           } else if (WindowsNativeKOTPrinter
                                               .isAvailable) {
@@ -1877,7 +1897,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                               kotDetails:
                                                   kotD.isNotEmpty ? kotD : actD,
                                               supplyType: supplyType,
-                                              title: 'Duplicate KOT',
+                                              title: 'Duplicate Job',
                                               onError: (m) {
                                                 if (context.mounted) {
                                                   ScaffoldMessenger.of(context)
@@ -1890,7 +1910,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                             ScaffoldMessenger.of(context)
                                                 .showSnackBar(const SnackBar(
                                                     content: Text(
-                                                        'KOT print not available')));
+                                                        'Job print not available')));
                                           }
                                         },
                                         style: ElevatedButton.styleFrom(
@@ -1937,7 +1957,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           return;
                         }
 
-                        // Area/Table/Chair: use loaded KOT context when we have one
+                        // Area/Chair: use loaded job context when we have one
                         String? areaId = ref.read(selectedAreaIdProvider);
                         String? tableId = ref.read(selectedTableIdProvider);
                         String? seatNo = ref.read(selectedSeatNoProvider);
@@ -1945,7 +1965,8 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           areaId ??= (firstRow['AreaID'] ?? firstRow['areaID'])
                               ?.toString();
                           tableId ??=
-                              (firstRow['TableID'] ?? firstRow['tableID'])
+                              (firstRow['TableID'] ?? firstRow['tableID'] ??
+                                      firstRow['ChairID'])
                                   ?.toString();
                           seatNo ??=
                               (firstRow['ChairNo'] ?? firstRow['chairNo'])
@@ -1956,7 +1977,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                             (areaId == null || areaId.isEmpty)) {
                           ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                  content: Text('Please select an Area')));
+                                  content: Text('Please select a section')));
                           return;
                         }
 
@@ -1964,8 +1985,34 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         final isWaiterMandatory =
                             ref.read(ISWaiterMandotoryProvider);
 
+                        // When appending to a loaded job, only send NEW lines so
+                        // existing ones are not duplicated on Save Job.
+                        bool isNewCartLine(Map<String, String> p) {
+                          final lineId = int.tryParse(
+                                  (p['dgvKOTChildID'] ??
+                                          p['LineID'] ??
+                                          p['lineId'] ??
+                                          '0')
+                                      .toString()) ??
+                              0;
+                          return lineId <= 0;
+                        }
+                        final linesToSave = hasLoadedKot
+                            ? cart.where(isNewCartLine).toList()
+                            : cart;
+                        if (linesToSave.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(hasLoadedKot
+                                  ? 'No new items to add. Add items, then tap Save Job.'
+                                  : 'Add at least one item'),
+                            ),
+                          );
+                          return;
+                        }
+
                         double subTotal = 0, taxTotal = 0, grandTotal = 0;
-                        final itemsPayload = cart.map((p) {
+                        final itemsPayload = linesToSave.map((p) {
                           final qty =
                               double.tryParse(p['quantity'] ?? '1') ?? 1.0;
                           final rate =
@@ -1983,9 +2030,11 @@ class _RightPanelState extends ConsumerState<RightPanel> {
 
                           return {
                             'ProductID': p['ProductID'],
-                            'BarCode': p['BarCode'] ?? '',
+                            'BarCode': p['BarCode'] ?? p['Barcode'] ?? '',
                             'UniqueProductID': p['UniqueProductID'] ?? '0',
                             'ItemName':
+                                p['ShortDescription'] ?? p['Description'] ?? '',
+                            'ShortDescription':
                                 p['ShortDescription'] ?? p['Description'] ?? '',
                             'ItemCode': p['ItemCode'] ?? '',
                             'Qty': qty.toString(),
@@ -1994,21 +2043,28 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                             'UnitPrice': rate.toString(),
                             'SubTotal': st.toString(),
                             'TaxPerc': taxP.toString(),
+                            'Tax1Rate': taxP.toString(),
+                            'Tax1RateC': taxP.toString(),
                             'TaxAmount': taxA.toString(),
+                            'Tax1AmountC': taxA.toString(),
                             'ItemDisc': p['ItemDisc'] ?? '0',
+                            'ItemDiscount': p['ItemDisc'] ?? '0',
                             'LineTotal': lt.toString(),
                             'dgvGrpID': p['GroupID'] ?? p['dgvGrpID'] ?? '0',
+                            'GroupID': p['GroupID'] ?? p['dgvGrpID'] ?? '0',
                             'Modifir': p['modifiers'] ?? '',
                             'AndroidPrint': p['AndroidPrint'] ?? 'PENDING',
                             'KOTDisplayStatus':
                                 p['KOTDisplayStatus'] ?? 'PENDING',
                             'qtyadd': p['qtyadd'] ?? '',
                             'dgvKOTChildID': p['dgvKOTChildID'] ?? '0',
-                            // Salon: see the note on the other Items builder.
                             'StylistID': p['StylistID'] ??
                                 SessionManager().staffID ??
                                 '',
-                            'LineType': p['LineType'] ?? 'PRODUCT',
+                            'LineType': p['LineType'] ??
+                                p['ProductType'] ??
+                                'PRODUCT',
+                            'ProductType': p['ProductType'] ?? p['LineType'] ?? '',
                           };
                         }).toList();
 
@@ -2019,8 +2075,17 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         final staffId = int.tryParse(sm.staffID ?? '0') ?? 0;
 
                         final payload = {
+                          'StationID': stationId,
+                          'stationId': stationId,
                           'mfAreaId': int.tryParse(areaId ?? '0') ?? 0,
+                          'AreaID': int.tryParse(areaId ?? '0') ?? 0,
                           'mfTableID': (tableId == null || tableId.isEmpty)
+                              ? 0
+                              : int.tryParse(tableId) ?? 0,
+                          'ChairID': (tableId == null || tableId.isEmpty)
+                              ? 0
+                              : int.tryParse(tableId) ?? 0,
+                          'TableID': (tableId == null || tableId.isEmpty)
                               ? 0
                               : int.tryParse(tableId) ?? 0,
                           'mfChairNo': (seatNo == null || seatNo.isEmpty)
@@ -2030,8 +2095,11 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           'mfCustomerID': (custId == null || custId.isEmpty)
                               ? 0
                               : int.tryParse(custId) ?? 0,
+                          'CustomerID': (custId == null || custId.isEmpty)
+                              ? 0
+                              : int.tryParse(custId) ?? 0,
+                          'PrimaryStylistID': staffId,
                           'gvCounterNo': stationId.toString(),
-                          'StationID': stationId,
                           'gvUserName': staffName,
                           'gvCashierID': staffId,
                           'txtDiscount': 0,
@@ -2041,21 +2109,24 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           'lblBillTotal': grandTotal,
                           'txtNoofCustomer': 0,
                           'txtRemarks': '',
-                          'btnname': 'KotSave',
+                          'btnname': 'JobSave',
                           'Items': itemsPayload,
                         };
 
-                        // Update existing KOT: pass loaded KOT id and number so backend updates same KOT and adds new items
+                        // Append to existing open job when one is already loaded
                         if (hasLoadedKot && firstRow != null) {
+                          payload['CurrentJobID'] = loadedKotMasterId;
                           payload['CurrentKOTID'] = loadedKotMasterId;
                           payload['mfKotPrefix'] = (firstRow['KotPrefix'] ??
                                   firstRow['KOTPrefix'] ??
                                   firstRow['kotPrefix'] ??
+                                  firstRow['JobNo'] ??
                                   '')
                               .toString();
                           payload['mfKotNo'] = (firstRow['KotNumber'] ??
                                   firstRow['KOTNumber'] ??
                                   firstRow['kotNumber'] ??
+                                  firstRow['JobNo'] ??
                                   '')
                               .toString();
                         }
@@ -2065,7 +2136,9 @@ class _RightPanelState extends ConsumerState<RightPanel> {
 
                         if (!mounted) return;
 
-                        if (result['ok'] == true) {
+                        final saveOk = result['ok'] == true ||
+                            result['success'] == true;
+                        if (saveOk) {
                           // Show success dialog immediately
                           if (mounted) {
                             showDialog(
@@ -2091,7 +2164,9 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                   ],
                                 ),
                                 content: Text(
-                                  result['msg'] ?? 'KOT saved successfully.',
+                                  result['msg'] ??
+                                      result['message'] ??
+                                      'Job saved successfully.',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     color: Colors.black87,
@@ -2117,7 +2192,10 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                             );
                           }
 
-                          final currentKotId = result['CurrentKOTID'];
+                          final currentKotId = result['CurrentKOTID'] ??
+                              result['currentJobId'] ??
+                              result['jobId'] ??
+                              result['currentKotId'];
                           Map<String, dynamic>? savedKotDetails;
                           if (currentKotId != null &&
                               int.tryParse(currentKotId.toString()) != null &&
@@ -2129,6 +2207,11 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                               if (kd is Map) {
                                 kotDetails =
                                     Map<String, dynamic>.from(kd as Map);
+                              } else if (result['data'] is List) {
+                                kotDetails = {
+                                  'success': true,
+                                  'data': result['data'],
+                                };
                               } else {
                                 kotDetails = await ApiService()
                                     .fetchKotDetails(currentKotId.toString());
@@ -2139,82 +2222,12 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                   kotDetails;
                               savedKotDetails = kotDetails;
                             } catch (_) {
-                              // Keep previous kotDetails if fetch fails
+                              // Keep previous job details if fetch fails
                             }
                           }
 
-                          // Run print in parallel (background) while success dialog is shown
-                          if (!kIsWeb &&
-                              WindowsNativeKOTPrinter.isAvailable &&
-                              savedKotDetails != null &&
-                              savedKotDetails.isNotEmpty) {
-                            final rawNewIds = result['newKotChildIds'];
-                            final newIds = rawNewIds is List
-                                ? (rawNewIds)
-                                    .map((e) =>
-                                        int.tryParse(e?.toString() ?? ''))
-                                    .whereType<int>()
-                                    .toSet()
-                                : <int>{};
-                            List<dynamic> toPrint =
-                                savedKotDetails['data'] is List
-                                    ? List<dynamic>.from(
-                                        savedKotDetails['data'] as List)
-                                    : [];
-                            if (newIds.isNotEmpty && toPrint.isNotEmpty) {
-                              toPrint = toPrint.where((row) {
-                                final id = row is Map
-                                    ? (row['KotChildID'] ?? row['KotChildId'])
-                                    : null;
-                                final idNum = id != null
-                                    ? int.tryParse(id.toString())
-                                    : null;
-                                return idNum != null && newIds.contains(idNum);
-                              }).toList();
-                            } else if (newIds.isEmpty) {
-                              toPrint =
-                                  []; // only new items get printed; no new items => no print
-                            }
-                            if (toPrint.isNotEmpty) {
-                              final supplyType = isTakeAwayView
-                                  ? 'PARCEL'
-                                  : (isDeliveryListView
-                                      ? 'DELIVERY'
-                                      : 'DINE IN');
-                              final ctxRef = context;
-                              final mountedRef = mounted;
-                              unawaited(
-                                Future(() async {
-                                  bool kotPrintFailed = false;
-                                  await WindowsNativeKOTPrinter.printKOT(
-                                    kotDetails: {'data': toPrint},
-                                    supplyType: supplyType,
-                                    title: 'KITCHEN ORDER TICKET',
-                                    onError: (m) {
-                                      kotPrintFailed = true;
-                                      if (mountedRef) {
-                                        ScaffoldMessenger.of(ctxRef)
-                                            .showSnackBar(
-                                                SnackBar(content: Text(m)));
-                                      }
-                                    },
-                                  );
-                                  if (!kotPrintFailed &&
-                                      currentKotId != null &&
-                                      (int.tryParse(currentKotId.toString()) ??
-                                              0) >
-                                          0) {
-                                    try {
-                                      await emptyKotDetails();
-                                    } catch (e) {
-                                      debugPrint(
-                                          '⚠️ markKotPrinted failed: $e');
-                                    }
-                                  }
-                                }),
-                              );
-                            }
-                          }
+                          // Salon: no auto-print on Save Job (unlike restaurant KOT).
+                          // Use Print Job / Job Reprint when a ticket is needed.
 
                           final clearAfter =
                               ref.read(ClearAfterKOTSaveProvider) == 1;
@@ -2226,13 +2239,37 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                                content: Text(
-                                    result['msg'] ?? 'Failed to save KOT')),
+                                content: Text(result['msg'] ??
+                                    result['message'] ??
+                                    'Failed to save job'),
+                                backgroundColor: Colors.red),
                           );
                         }
                       } catch (e) {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text('Error: $e')));
+                        if (!mounted) return;
+                        final msg =
+                            e.toString().replaceFirst('Exception: ', '');
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            title: const Text('Save Job failed',
+                                style: TextStyle(
+                                    color: Color(0xFF521C1D),
+                                    fontWeight: FontWeight.bold)),
+                            content: Text(msg),
+                            actions: [
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF780829)),
+                                child: const Text('OK',
+                                    style: TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        );
                       }
                     },
                     onDiscount: () async {
@@ -2246,7 +2283,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                               content: Text(
-                                  'Select or load a KOT first (takeaway/delivery/table or save KOT).'),
+                                  'Select or load a job first (or tap Save Job).'),
                               backgroundColor: Colors.orange),
                         );
                         return;
@@ -2260,7 +2297,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                               content:
-                                  Text('Invalid KOT. Load a saved KOT first.'),
+                                  Text('Invalid job. Load a saved job first.'),
                               backgroundColor: Colors.red),
                         );
                         return;
@@ -2315,7 +2352,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                  'Discount saved but failed to refresh KOT: $e'),
+                                  'Discount saved but failed to refresh job: $e'),
                               backgroundColor: Colors.orange,
                             ),
                           );
@@ -2438,7 +2475,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                      'KOT moved to ${areaName ?? "new area"}${(tableId != null && tableId != "0") ? " · Table $tableId" : ""}'),
+                                      'Job moved to ${areaName ?? "new section"}${(tableId != null && tableId != "0") ? " · Chair $tableId" : ""}'),
                                   backgroundColor: const Color(0xFF521C1D),
                                   behavior: SnackBarBehavior.floating,
                                 ),

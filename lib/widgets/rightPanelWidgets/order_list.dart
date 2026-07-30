@@ -6,509 +6,363 @@ import 'package:intl/intl.dart';
 import 'package:my_app/core/providers/providers.dart';
 import 'package:my_app/services/api_service.dart';
 
-/// Global function to format KotTime to `dd-MM-yy hh:mm a`
-String formatKotTime(String isoDate) {
+String formatJobTime(String? isoDate) {
+  if (isoDate == null || isoDate.isEmpty) return '—';
   try {
-    DateTime dateTime = DateTime.parse(isoDate);
-    String formattedDate = DateFormat('dd-MM-yy').format(dateTime);
-    String formattedTime = DateFormat('hh:mm a').format(dateTime);
-    return '$formattedDate $formattedTime';
-  } catch (e) {
-    return 'Invalid Date';
+    final dateTime = DateTime.parse(isoDate).toLocal();
+    return DateFormat('dd-MM-yy hh:mm a').format(dateTime);
+  } catch (_) {
+    return isoDate;
   }
 }
 
-// ✅ Convert OrderList to ConsumerStatefulWidget
+/// Open jobs list — searchable table with Invoice to load into the main grid.
 class OrderList extends ConsumerStatefulWidget {
   @override
   _OrderListState createState() => _OrderListState();
 }
 
 class _OrderListState extends ConsumerState<OrderList> {
-  List<Map<String, dynamic>> orders = []; // Orders list from API response
-  String selectedArea = "All"; // Default to showing all orders
-  List<String> allAreas = ["All"]; // Default value includes "All"
-
-  String searchQuery = ""; // To store the search query
-  Timer? _debounce; // Timer for debouncing search
-  String selectedSupplyType = "All"; // To filter by SupplyType
+  List<Map<String, dynamic>> _jobs = [];
+  bool _loading = true;
+  String _searchQuery = '';
+  String? _error;
+  Timer? _debounce;
+  final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadOrders();
-  }
-
-  Future<void> _loadOrders() async {
-    try {
-      final fetched = await ApiService().fetchOrderList(
-        search: searchQuery.isEmpty ? null : searchQuery,
-      );
-      if (!mounted) return;
-      final areas = fetched.map((o) => o['AreaName'] as String? ?? '').toSet().toList();
-      setState(() {
-        orders = fetched;
-        allAreas = ['All', ...areas];
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load orders: $e')),
-      );
-    }
-  }
-
-  void _fetchKotDetails(int kotMasterID) async {
-    try {
-      final kotDetails = await ApiService().fetchKotDetails('$kotMasterID');
-      if (!mounted) return;
-
-      if ((kotDetails['data'] as List?)?.isNotEmpty ?? false) {
-        ref.read(isUpdatingFromOrderListProvider.notifier).state = true;
-        Navigator.pop(context);
-        Future.delayed(const Duration(milliseconds: 300), () {
-          ref.read(kotDetailsProvider.notifier).state = kotDetails;
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('KOT has no items')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load KOT details: $e')),
-      );
-    }
-  }
-
-  /// Debounce the search to avoid multiple API calls
-  void _onSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      setState(() {
-        searchQuery = query;
-      });
-      _loadOrders();
-    });
+    _loadJobs();
   }
 
   @override
   void dispose() {
-    _debounce?.cancel(); // Cancel debounce timer if widget is disposed
+    _debounce?.cancel();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
-  /// Generates a consistent color for each area name
-  Color _getDynamicColor(String area) {
-    final int hash = area.hashCode; // Generate a hash from the area name
-    final int r = (hash & 0xFF0000) >> 16; // Extract red from the hash
-    final int g = (hash & 0x00FF00) >> 8; // Extract green from the hash
-    final int b = (hash & 0x0000FF); // Extract blue from the hash
-    return Color.fromARGB(255, r, g, b);
+  Future<void> _loadJobs() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final fetched = await ApiService().fetchOrderList(
+        search: _searchQuery.isEmpty ? null : _searchQuery,
+      );
+      if (!mounted) return;
+      setState(() {
+        _jobs = fetched;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
   }
 
-  /// List of available icons to use dynamically for the area
-  final List<IconData> _availableIcons = [
-    Icons.shopping_bag,
-    Icons.restaurant,
-    Icons.delivery_dining,
-    Icons.meeting_room,
-    Icons.home,
-    Icons.storefront,
-    Icons.local_cafe,
-    Icons.fastfood,
-  ];
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      setState(() => _searchQuery = query.trim());
+      _loadJobs();
+    });
+  }
 
-  /// Generates a consistent icon for each area name
-  IconData _getDynamicIcon(String area) {
-    final int index =
-        area.hashCode % _availableIcons.length; // Use hash to get index
-    return _availableIcons[index];
+  String _jobIdOf(Map<String, dynamic> job) {
+    return (job['JobID'] ??
+            job['jobId'] ??
+            job['kotMasterID'] ??
+            job['kotMasterId'] ??
+            job['KotMasterID'] ??
+            '')
+        .toString();
+  }
+
+  String _jobNoOf(Map<String, dynamic> job) {
+    final direct = (job['JobNo'] ?? job['jobNo'] ?? '').toString().trim();
+    if (direct.isNotEmpty) return direct;
+    final combined =
+        '${job['KotPrefix'] ?? ''}${job['KotNumber'] ?? job['kotNumber'] ?? ''}'
+            .trim();
+    return combined.isEmpty ? '—' : combined;
+  }
+
+  Future<void> _loadInvoice(Map<String, dynamic> job) async {
+    final id = _jobIdOf(job);
+    if (id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid job id')),
+      );
+      return;
+    }
+    try {
+      final details = await ApiService().fetchKotDetails(id);
+      if (!mounted) return;
+      final data = details['data'];
+      if (data is! List || data.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This job has no items')),
+        );
+        return;
+      }
+      ref.read(isUpdatingFromOrderListProvider.notifier).state = true;
+      Navigator.pop(context);
+      Future.delayed(const Duration(milliseconds: 200), () {
+        ref.read(kotDetailsProvider.notifier).state = details;
+        ref.read(activeKotProvider.notifier).state = details;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load job: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    List<String> uniqueAreas = orders
-        .map((order) =>
-            (order["AreaName"] ?? order["areaName"] ?? '').toString())
-        .toSet()
-        .toList();
-    uniqueAreas.insert(0, "All"); // Add "All" option to the top
-
-    List<Map<String, dynamic>> filteredOrders = orders.where((o) {
-      final areaName = (o['AreaName'] ?? o['areaName'] ?? '').toString();
-      if (selectedArea != 'All' && areaName != selectedArea) return false;
-      if (selectedSupplyType != 'All' && o['SupplyType'] != selectedSupplyType) return false;
-      return true;
-    }).toList();
-
+    const accent = Color(0xFF780829);
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F5F6),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF800000),
-        toolbarHeight: 65,
-        titleSpacing: 0,
-        title: _buildHeader(uniqueAreas),
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          double screenWidth = constraints.maxWidth;
-          double itemHeight = 200;
-          int crossAxisCount = (screenWidth ~/ 150).clamp(2, 9);
-
-          return Row(
-            children: [
-              _buildSidebar(context),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 10),
-                  child: GridView.builder(
-                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent:
-                          160, // Sets the maximum width of each grid tile
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      mainAxisExtent:
-                          180, // Requires Flutter 2.5+ to set a fixed height
-                    ),
-                    itemCount: filteredOrders.length,
-                    itemBuilder: (context, index) {
-                      return _buildOrderCard(filteredOrders[index]);
-                    },
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  // Header with colored buttons
-  Widget _buildHeader(List<String> areas) {
-    return Container(
-      color: const Color(0xFF800000),
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
-      child: Row(
-        children: allAreas.map((area) {
-          Color dynamicColor = _getDynamicColor(area);
-          return _buildHeaderButton(area, dynamicColor);
-        }).toList(),
-      ),
-    );
-  }
-
-  // Header Button with Custom Colors
-  Widget _buildHeaderButton(String label, Color color) {
-    bool isSelected =
-        selectedArea == label; // Check if the current area is selected
-    if (selectedArea == "All") {
-      isSelected = label == "All"; // Highlight "All" if no area is selected
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0, top: 7),
-      child: ElevatedButton(
-        onPressed: () {
-          setState(() {
-            if (label == "All") {
-              selectedArea = "All"; // Reset area filter
-              selectedSupplyType = "All"; // Reset supply type filter
-              searchQuery = ""; // Clear search query
-            } else {
-              selectedArea = label;
-            }
-          });
-          _loadOrders(); // Fetch updated orders
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+        backgroundColor: accent,
+        foregroundColor: Colors.white,
+        title: const Text('Job List'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loading ? null : _loadJobs,
+            icon: const Icon(Icons.refresh),
           ),
-          elevation: isSelected ? 10 : 2,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        ],
       ),
-    );
-  }
-
-  static const _supplyMeta = {
-    'DINE_IN':  (Icons.restaurant,     'Dine In'),
-    'PARCEL':   (Icons.shopping_bag,   'Take Away'),
-    'DELIVERY': (Icons.delivery_dining,'Delivery'),
-    'TAKEAWAY': (Icons.shopping_bag,   'Takeaway'),
-    'GENERAL':  (Icons.store,          'General'),
-  };
-
-  Widget _buildSidebar(BuildContext context) {
-    final uniqueSupplyTypes = orders
-        .map((o) => (o['SupplyType'] as String? ?? '').trim())
-        .where((s) => s.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
-
-    return Container(
-      width: 100,
-      color: const Color(0xFF800000),
-      child: Column(
+      body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 16.0, bottom: 8.0),
-            child: Text(
-              "KOT NO.",
-              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
             child: TextField(
+              controller: _searchCtrl,
               onChanged: _onSearchChanged,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
               decoration: InputDecoration(
-                hintText: "Search",
-                hintStyle: const TextStyle(color: Colors.white70),
+                hintText: 'Search job no, customer, chair, stylist…',
+                prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: Colors.black26,
+                fillColor: Colors.white,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                  borderSide: BorderSide(color: accent, width: 1.5),
+                ),
               ),
             ),
           ),
-          _buildSidebarButton(Icons.list, "All", selectedSupplyType == "All", () {
-            setState(() {
-              selectedArea = "All";
-              selectedSupplyType = "All";
-            });
-          }),
-          ...uniqueSupplyTypes.map((type) {
-            final meta = _supplyMeta[type];
-            final icon  = meta?.$1 ?? Icons.label;
-            final label = meta?.$2 ?? type;
-            return _buildSidebarButton(icon, label, selectedSupplyType == type, () {
-              setState(() => selectedSupplyType = type);
-            });
-          }),
-          const Spacer(),
-          _buildSidebarButton(Icons.home, "Home", false, () {
-            Navigator.pop(context);
-          }),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(color: accent))
+                : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_error!, textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: _loadJobs,
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: accent),
+                                child: const Text('Retry',
+                                    style: TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : _jobs.isEmpty
+                        ? const Center(child: Text('No open jobs found'))
+                        : _buildTable(accent),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSidebarButton(IconData icon, String label, bool isSelected, VoidCallback onPressed) {
+  Widget _buildTable(Color accent) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: GestureDetector(
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
-          decoration: isSelected
-              ? BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
-                )
-              : null,
-          child: Column(
-            children: [
-              Icon(icon, color: Colors.white, size: 28),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        elevation: 1,
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.08),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(10)),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Order Card with Dynamic Colors and Icons
-  Widget _buildOrderCard(Map<String, dynamic> order) {
-    // Extracting relevant data from the order
-    String kotNumber = order['KotNumber'] ?? 'N/A';
-    print('${kotNumber}: Kot Number');
-    String kotPrefix = order['KotPrefix'] ?? 'N/A';
-    String amount = order['Amount']?.toString() ?? '0.00';
-    String tableID = order['TableName'] ?? 'N/A';
-    String chairNo = order['ChairNo'] ?? 'N/A';
-    String kotTime = formatKotTime(order['KotTime'] ?? 'N/A');
-
-    String AreaName = order['AreaName'] ?? 'Unknown';
-
-    Color dynamicColor = _getDynamicColor(AreaName);
-    IconData dynamicIcon = _getDynamicIcon(AreaName);
-
-    String combinedKotNo = "$kotPrefix$kotNumber"; // Combined KOT No
-
-    return Container(
-      decoration: BoxDecoration(
-        color: dynamicColor.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 6,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-            child: Row(
-              children: [
-                Icon(dynamicIcon, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    AreaName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                const Icon(Icons.access_time, color: Colors.black54, size: 14),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    kotTime,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            color: Colors.grey.shade300,
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-            child: Text(
-              "Table: $tableID - Chair: $chairNo",
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-            child: Text(
-              "Supply Type: ${order['SupplyType'] ?? 'N/A'}",
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black87,
-                fontWeight: FontWeight.bold,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 0.0),
-            child: Container(
-              color: Colors.grey.shade300,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(vertical: 6.0),
-              child: Text(
-                "Amount: ${amount}",
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF17359B),
-                ),
-              ),
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFFF0C00), Color(0xFFFF9B00)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-            ),
-            alignment: Alignment.center,
-            padding: EdgeInsets.symmetric(vertical: 6.0),
-            child: InkWell(
-              onTap: () {
-                int? kotMasterID =
-                    int.tryParse(order['kotMasterID'].toString());
-                if (kotMasterID != null) {
-                  _fetchKotDetails(kotMasterID);
-                } else {
-                  print("❌ Error: kotMasterID is not a valid integer");
-                }
-              },
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: const Row(
                 children: [
-                  Icon(Icons.arrow_right_alt, color: Colors.white, size: 20),
-                  SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      "KOT No: ${order['KotPrefix']}${order['KotNumber']}",
+                  _HCell('Job No', flex: 2),
+                  _HCell('Time', flex: 2),
+                  _HCell('Customer', flex: 2),
+                  _HCell('Chair', flex: 1),
+                  _HCell('Stylist', flex: 2),
+                  _HCell('Amount', flex: 1, align: TextAlign.right),
+                  _HCell('Status', flex: 1),
+                  SizedBox(width: 100, child: Text('Invoice',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                          fontWeight: FontWeight.w700, fontSize: 12))),
                 ],
               ),
             ),
-          ),
-        ],
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                itemCount: _jobs.length,
+                separatorBuilder: (_, __) =>
+                    Divider(height: 1, color: Colors.grey.shade200),
+                itemBuilder: (context, index) {
+                  final job = _jobs[index];
+                  final amount = (job['Amount'] ??
+                          job['amount'] ??
+                          job['totalAmount'] ??
+                          '0')
+                      .toString();
+                  final customer = (job['CustomerName'] ??
+                          job['customerName'] ??
+                          'Walk-in')
+                      .toString();
+                  final chair = (job['ChairName'] ??
+                          job['chairName'] ??
+                          job['TableName'] ??
+                          job['ChairID'] ??
+                          '—')
+                      .toString();
+                  final stylist = (job['PrimaryStylistName'] ??
+                          job['primaryStylistName'] ??
+                          job['staffName'] ??
+                          '—')
+                      .toString();
+                  final status =
+                      (job['JobStatus'] ?? job['status'] ?? 'OPEN').toString();
+                  final time = formatJobTime(
+                      (job['StartTime'] ?? job['KotTime'] ?? job['createdAt'])
+                          ?.toString());
+
+                  return Container(
+                    color: index.isEven ? Colors.white : const Color(0xFFFAFAFA),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        _CCell(_jobNoOf(job), flex: 2, bold: true),
+                        _CCell(time, flex: 2),
+                        _CCell(customer, flex: 2),
+                        _CCell(chair, flex: 1),
+                        _CCell(stylist, flex: 2),
+                        _CCell(amount, flex: 1, align: TextAlign.right),
+                        _CCell(status, flex: 1),
+                        SizedBox(
+                          width: 100,
+                          child: Align(
+                            alignment: Alignment.center,
+                            child: TextButton(
+                              onPressed: () => _loadInvoice(job),
+                              style: TextButton.styleFrom(
+                                backgroundColor: accent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                minimumSize: const Size(0, 36),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text('Invoice',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HCell extends StatelessWidget {
+  final String text;
+  final int flex;
+  final TextAlign align;
+  const _HCell(this.text, {this.flex = 1, this.align = TextAlign.left});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        textAlign: align,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: Color(0xFF521C1D),
+        ),
+      ),
+    );
+  }
+}
+
+class _CCell extends StatelessWidget {
+  final String text;
+  final int flex;
+  final bool bold;
+  final TextAlign align;
+  const _CCell(this.text,
+      {this.flex = 1, this.bold = false, this.align = TextAlign.left});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        textAlign: align,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+          color: Colors.black87,
+        ),
       ),
     );
   }

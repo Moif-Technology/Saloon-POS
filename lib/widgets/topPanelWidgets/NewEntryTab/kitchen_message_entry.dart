@@ -58,7 +58,7 @@ class _KitchenMessageEntryDialogState extends State<KitchenMessageEntryDialog> {
       englishMessageController.clear();
       arabicMessageController.clear();
     });
-    await _showSuccessDialog('Kitchen message saved in mock mode.');
+    await _showSuccessDialog('Job message saved in mock mode.');
   }
 
   Future<void> _updateModifier() async {
@@ -89,7 +89,7 @@ class _KitchenMessageEntryDialogState extends State<KitchenMessageEntryDialog> {
         };
       }
     });
-    await _showSuccessDialog('Kitchen message updated in mock mode.');
+    await _showSuccessDialog('Job message updated in mock mode.');
   }
 
   Future<void> _deleteModifier(int modifierID) async {
@@ -100,7 +100,7 @@ class _KitchenMessageEntryDialogState extends State<KitchenMessageEntryDialog> {
       _modifiers.removeWhere((m) => m['ModifierID'] == modifierID);
       if (_selectedModifierID == modifierID) _selectedModifierID = null;
     });
-    await _showSuccessDialog('Kitchen message deleted in mock mode.');
+    await _showSuccessDialog('Job message deleted in mock mode.');
   }
 
   Future<void> _showSuccessDialog(String message) async {
@@ -278,7 +278,7 @@ class _KitchenMessageEntryDialogState extends State<KitchenMessageEntryDialog> {
               padding: EdgeInsets.all(16),
               child: Center(
                 child: Text(
-                  "Kitchen Message Entry",
+                  "Job Message Entry",
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -294,7 +294,7 @@ class _KitchenMessageEntryDialogState extends State<KitchenMessageEntryDialog> {
                 children: [
                   Expanded(
                     child: _buildMessageTextField(
-                        "Kitchen Message", englishMessageController),
+                        "Job Message", englishMessageController),
                   ),
                   SizedBox(width: 12),
                   Expanded(

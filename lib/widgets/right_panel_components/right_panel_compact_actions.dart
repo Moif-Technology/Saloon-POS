@@ -156,7 +156,9 @@ class RightPanelCompactActions extends StatelessWidget {
           label: "Save\nJob",
           icon: Icons.save,
           onPressed: onSaveKot,
-          textColor: Colors.red,
+          filledColor: const Color(0xFF780829),
+          textColor: Colors.white,
+          highlightFade: true,
         ),
       if (showDiscount)
         PosButton(

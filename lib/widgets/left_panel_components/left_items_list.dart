@@ -38,7 +38,7 @@ class LeftItemsList extends StatefulWidget {
     required this.currencyDecimalsFrom,
     this.compact = false,
     this.isBaseVersion = false,
-    this.showModifier = true,
+    this.showModifier = false,
     this.showQtyControls = true,
     this.showUnitPrice = true,
     this.showSubtotal = true,

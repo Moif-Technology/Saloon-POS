@@ -313,12 +313,12 @@ class RightPanelKeypadActions extends StatelessWidget {
       [
         if (!isBaseVersion && showTakeAwayList)
           PosButton(
-              label: "Take Away\nList",
+              label: "Walk-In\nList",
               icon: Icons.list_alt,
               onPressed: onTakeAwayList),
         if (!isBaseVersion && onAreaChange != null)
           PosButton(
-              label: "Area\nChange",
+              label: "Section\nChange",
               icon: Icons.location_on,
               onPressed: onAreaChange!),
         if (showNoSale)
@@ -331,8 +331,8 @@ class RightPanelKeypadActions extends StatelessWidget {
       [
         if (!isBaseVersion && onDeliveryList != null)
           PosButton(
-              label: "Delivery\nList",
-              icon: Icons.delivery_dining,
+              label: "Visit\nList",
+              icon: Icons.list_alt,
               onPressed: onDeliveryList!),
         if (showOrderList)
           PosButton(
@@ -356,8 +356,8 @@ class RightPanelKeypadActions extends StatelessWidget {
               isBaseVersion: isBaseVersion),
         if (!isBaseVersion && onDelivery != null)
           PosButton(
-              label: "Delivery",
-              icon: Icons.local_shipping,
+              label: "Visit",
+              icon: Icons.directions_walk,
               onPressed: onDelivery!),
         if (!isBaseVersion && showDirectSettlement)
           PosButton(
@@ -380,7 +380,7 @@ class RightPanelKeypadActions extends StatelessWidget {
         if (!isBaseVersion && onSelectTable != null)
           PosButton(
               label: "Select Chair",
-              icon: Icons.lock_open,
+              icon: Icons.event_seat,
               onPressed: onSelectTable!),
       ],
     ];

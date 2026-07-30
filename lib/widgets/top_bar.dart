@@ -64,7 +64,7 @@ class TopBar extends ConsumerWidget {
     "Upload To Main Server": "pos.sync_tools",
     "Download New Items from main server": "pos.sync_tools",
     "Recipe Entry": "pos.recipe",
-    "Kitchen Message": "pos.kitchen_message",
+    "Job Message": "pos.kitchen_message",
     "Combo": "pos.combo",
     "Combo Edit": "pos.combo",
     "Barcode Print Utility": "pos.barcode",
@@ -83,8 +83,8 @@ class TopBar extends ConsumerWidget {
     "Sales Viewer": "pos.counter_reports",
     "Sales Vat Report": "pos.vat_reports",
     "Report View": "pos.report_export",
-    "Table Entry": "pos.tables",
-    "Table Edit": "pos.tables",
+    "Chair Entry": "pos.tables",
+    "Chair Edit": "pos.tables",
     "Language Setup": "pos.language_setup",
     "Utility For VAT Correction": "pos.vat",
   };
@@ -134,7 +134,7 @@ class TopBar extends ConsumerWidget {
       _denyAccess(context, dialogName);
       return;
     }
-    if (dialogName == "Clear KOT") {
+    if (dialogName == "Clear Job") {
       _showClearKOTConfirmation(context);
       return;
     }
@@ -145,7 +145,7 @@ class TopBar extends ConsumerWidget {
 
     final dialogMap = {
       "Area Entry": () => AreaDetailsEntryDialog(task: "New"),
-      "Table Entry": () => TableDetailsDialog(),
+      "Chair Entry": () => TableDetailsDialog(),
       "Group Entry": () => GroupDetailsDialog(),
       "Sub Group Entry": () => SubgroupDetailsDialog(),
       "Product Entry": () => ProductMasterDetailsDialog(
@@ -153,7 +153,7 @@ class TopBar extends ConsumerWidget {
             groupId: null,
             fromTopBar: true, // ✅ Add this!
           ),
-      "Kitchen Message": () => KitchenMessageEntryDialog(),
+      "Job Message": () => KitchenMessageEntryDialog(),
       "Combo": () => ComboDetailsEntryDialog(),
       "Recipe Entry": () => RecipeDetailsEntryDialog(),
       "Barcode Print Utility": () => BarcodePrintUtilityDialog(),
@@ -161,7 +161,7 @@ class TopBar extends ConsumerWidget {
       "Online Source Entry": () => SourceEntry(),
       "Mess Master Entry": () => MessMasterEntryDialog(),
       "Area Edit": () => AreaListDialog(),
-      "Table Edit": () => TableListDialog(),
+      "Chair Edit": () => TableListDialog(),
       "Group Edit": () => GroupListDialog(),
       "Sub Group Edit": () => SubGroupListDialog(),
       "Product Edit": () => ProductListDialog(),
@@ -259,7 +259,7 @@ class TopBar extends ConsumerWidget {
           ),
           backgroundColor: Colors.white,
           title: Text(
-            "Clear KOT",
+            "Clear Job",
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -267,7 +267,7 @@ class TopBar extends ConsumerWidget {
             ),
           ),
           content: Text(
-            "Are you sure you want to clear all KOTs?",
+            "Are you sure you want to clear the current job?",
             style: TextStyle(
               fontSize: 16,
               color: Colors.black87,
@@ -295,13 +295,13 @@ class TopBar extends ConsumerWidget {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                // Add logic to clear KOTs here
+                // Add logic to clear jobs here
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     backgroundColor:
                         Color(0xFF521C1D), // Custom color for SnackBar
                     content: Text(
-                      "All KOTs have been cleared.",
+                      "Job cleared.",
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -655,7 +655,7 @@ class TopBar extends ConsumerWidget {
                     ),
                   if (!isBaseVersion && hasPosFeature(ref, 'pos.tables'))
                     const PopupMenuItem<String>(
-                        value: "Table Entry", child: Text("Table Entry")),
+                        value: "Chair Entry", child: Text("Chair Entry")),
                   if (hasPosFeature(ref, 'pos.group_master'))
                     const PopupMenuItem<String>(
                         value: "Group Entry", child: Text("Group Entry")),
@@ -670,8 +670,8 @@ class TopBar extends ConsumerWidget {
                   if (!isBaseVersion) ...[
                     if (hasPosFeature(ref, 'pos.kitchen_message'))
                       const PopupMenuItem<String>(
-                          value: "Kitchen Message",
-                          child: Text("Kitchen Message")),
+                          value: "Job Message",
+                          child: Text("Job Message")),
                     if (hasPosFeature(ref, 'pos.combo'))
                       const PopupMenuItem<String>(
                           value: "Combo", child: Text("Combo")),
@@ -707,7 +707,7 @@ class TopBar extends ConsumerWidget {
                           value: "Area Edit", child: Text("Area Edit")),
                     if (hasPosFeature(ref, 'pos.tables'))
                       const PopupMenuItem<String>(
-                          value: "Table Edit", child: Text("Table Edit")),
+                          value: "Chair Edit", child: Text("Chair Edit")),
                   ],
                   if (hasPosFeature(ref, 'pos.group_master'))
                     const PopupMenuItem<String>(
@@ -1058,7 +1058,7 @@ class TopBar extends ConsumerWidget {
                     const PopupMenuItem<String>(
                         value: "Cashier Change", child: Text("Cashier Change")),
                   const PopupMenuItem<String>(
-                      value: "Clear KOT", child: Text("Clear KOT")),
+                      value: "Clear Job", child: Text("Clear Job")),
                   if (!isBaseVersion) ...[
                     if (hasPosFeature(ref, 'pos.cash_in_out'))
                       const PopupMenuItem<String>(

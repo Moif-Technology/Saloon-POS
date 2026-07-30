@@ -136,8 +136,8 @@ class DirectSettlement extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _smallBtn(context, "Take Away", Colors.blue, pad, fs),
-            _smallBtn(context, "Dine In", Colors.green, pad, fs),
+            _smallBtn(context, "Walk-In", Colors.blue, pad, fs),
+            _smallBtn(context, "Chair", Colors.green, pad, fs),
             _smallBtn(context, "Delete", Colors.red, pad, fs),
           ],
         ),

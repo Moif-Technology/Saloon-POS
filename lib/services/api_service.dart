@@ -486,12 +486,21 @@ class ApiService {
         (m['customerCode'] ?? m['CustomerCode'])?.toString().trim() ?? '';
     final name =
         (m['customerName'] ?? m['CustomerName'])?.toString().trim() ?? '';
-    final city = (m['cityName'] ?? m['City'])?.toString().trim() ?? '';
+    final city =
+        (m['cityName'] ?? m['City'] ?? m['city'])?.toString().trim() ?? '';
+    final country =
+        (m['countryName'] ?? m['Country'] ?? m['country'])?.toString().trim() ??
+            '';
     final tel = (m['telephone'] ?? m['Telephone'])?.toString().trim() ?? '';
     final mobile = (m['mobileNo'] ?? m['MobileNo'])?.toString().trim() ?? '';
     final trn = (m['customerTaxRegNo'] ?? m['CustTRN'] ?? m['taxRegNo'])
             ?.toString()
             .trim() ??
+        '';
+    final loyalty = (m['loyaltyStatus'] ?? m['loyaltyCustStatus'])
+            ?.toString()
+            .trim()
+            .toUpperCase() ??
         '';
     return {
       'CustomerID': '$cid',
@@ -500,21 +509,52 @@ class ApiService {
       'customerCode': code,
       'CustomerName': name,
       'customerName': name,
+      'companyName': (m['companyName'] ?? '').toString(),
+      'CompanyName': (m['companyName'] ?? '').toString(),
       'City': city,
+      'city': city,
+      'Country': country,
+      'country': country,
       'Telephone': tel,
+      'telephone': tel,
       'MobileNo': mobile,
+      'mobileNo': mobile,
       'CustTRN': trn,
+      'taxRegNo': trn,
       'Address': (m['address'] ?? m['Address'])?.toString() ?? '',
+      'address': (m['address'] ?? m['Address'])?.toString() ?? '',
+      'addressArabic':
+          (m['addressArabic'] ?? m['AddressArabic'])?.toString() ?? '',
+      'poBox': (m['poBox'] ?? '').toString(),
+      'contactPerson': (m['contactPerson'] ?? '').toString(),
+      'designation': (m['designation'] ?? '').toString(),
+      'faxNo': (m['fax'] ?? m['faxNo'] ?? '').toString(),
+      'email': (m['email'] ?? '').toString(),
+      'paymentMode': (m['paymentMode'] ?? m['PaymentMode'] ?? '').toString(),
+      'creditLimit': (m['creditLimit'] ?? m['CreditLimit'] ?? '').toString(),
+      'creditPeriodDays':
+          (m['creditPeriod'] ?? m['creditPeriodDays'] ?? '').toString(),
+      'creditBalance':
+          (m['creditBalance'] ?? m['CreditBalance'] ?? '').toString(),
+      'customerType': (m['customerType'] ?? '').toString(),
+      'managedBy': (m['managedBy'] ?? '').toString(),
+      'loyaltyCustStatus':
+          (loyalty == 'ACTIVE' || loyalty == 'YES') ? 'Yes' : 'No',
+      'creditStatus': (m['creditStatus'] ?? 'ACTIVE').toString(),
+      'remarks': (m['remarks'] ?? '').toString(),
     };
   }
 
   /// Lists customers for the signed-in company (branch-independent master).
-  Future<List<dynamic>> fetchCustomers({int limit = 400}) async {
+  Future<List<dynamic>> fetchCustomers(
+      {int limit = 400, String? search}) async {
     final headers = _bearerHeaders();
     final cap = limit.clamp(1, 2000);
-    final uri = Uri.parse('$baseURL/api/customers').replace(
-      queryParameters: {'limit': '$cap'},
-    );
+    final qp = <String, String>{'limit': '$cap'};
+    final q = search?.trim() ?? '';
+    if (q.isNotEmpty) qp['search'] = q;
+    final uri =
+        Uri.parse('$baseURL/api/customers').replace(queryParameters: qp);
     final response = await http.get(uri, headers: headers);
     if (response.statusCode == 401) throw Exception('Unauthorized.');
     if (response.statusCode == 503 || response.statusCode == 404) return [];
@@ -528,6 +568,56 @@ class ApiService {
     final list = decoded['customers'];
     if (list is! List) return [];
     return list.map((e) => customerRowForPos(e)).toList();
+  }
+
+  /// POST `/api/customers` — ERP Customer Entry create payload.
+  Future<Map<String, dynamic>> createCustomer(
+      Map<String, dynamic> payload) async {
+    final headers = _bearerHeaders();
+    final response = await http.post(
+      Uri.parse('$baseURL/api/customers'),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if ((response.statusCode == 200 || response.statusCode == 201) &&
+        decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map && decoded['message'] != null
+        ? decoded['message'].toString()
+        : 'Failed to create customer (${response.statusCode})';
+    throw Exception(msg);
+  }
+
+  /// PUT `/api/customers/:customerId` — ERP Customer Entry update payload.
+  Future<Map<String, dynamic>> updateCustomer(
+      String customerId, Map<String, dynamic> payload) async {
+    final headers = _bearerHeaders();
+    final response = await http.put(
+      Uri.parse(
+          '$baseURL/api/customers/${Uri.encodeComponent(customerId)}'),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map && decoded['message'] != null
+        ? decoded['message'].toString()
+        : 'Failed to update customer (${response.statusCode})';
+    throw Exception(msg);
   }
 
   /// When [groupId] is set, only sub-groups for that parent are returned.
@@ -694,11 +784,37 @@ class ApiService {
     throw Exception(msg);
   }
 
-  /// Saves a KOT (kitchen order). [payload] matches legacy POS shape: `mfAreaId`, `Items`, `StationID`, etc.
-  Future<Map<String, dynamic>> saveKot(Map<String, dynamic> payload) async {
+  /// GET `/api/products/:productId?branchId=` — full product + inventory for edit.
+  Future<Map<String, dynamic>> fetchProductById(String productId) async {
     final headers = _bearerHeaders();
-    final response = await http.post(
-      Uri.parse('$baseURL$posBasePath/job/save'),
+    final uri = Uri.parse(
+            '$baseURL/api/products/${Uri.encodeComponent(productId)}')
+        .replace(queryParameters: {'branchId': '${_branchId()}'});
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode == 200 && decoded is Map) {
+      final product = decoded['product'];
+      if (product is Map) return Map<String, dynamic>.from(product);
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map && decoded['message'] != null
+        ? decoded['message'].toString()
+        : 'Failed to load product (${response.statusCode})';
+    throw Exception(msg);
+  }
+
+  /// PUT `/api/products/:productId` — same payload shape as [createProduct].
+  Future<Map<String, dynamic>> updateProduct(
+      String productId, Map<String, dynamic> payload) async {
+    final headers = _bearerHeaders();
+    final response = await http.put(
+      Uri.parse('$baseURL/api/products/${Uri.encodeComponent(productId)}'),
       headers: {...headers, 'Content-Type': 'application/json'},
       body: jsonEncode(payload),
     );
@@ -713,9 +829,33 @@ class ApiService {
     }
     final msg = decoded is Map && decoded['message'] != null
         ? decoded['message'].toString()
+        : 'Failed to update product (${response.statusCode})';
+    throw Exception(msg);
+  }
+
+  /// Saves a salon job. [payload] accepts restaurant-legacy keys
+  /// (`mfAreaId`, `Items`, …) which the salon API normalises.
+  Future<Map<String, dynamic>> saveKot(Map<String, dynamic> payload) async {
+    final headers = _bearerHeaders();
+    final response = await http.post(
+      Uri.parse('$baseURL$posBasePath/job/save'),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map && decoded['message'] != null
+        ? decoded['message'].toString()
         : (response.body.isNotEmpty
             ? response.body
-            : 'KOT save failed (${response.statusCode})');
+            : 'Job save failed (${response.statusCode})');
     throw Exception(msg);
   }
 

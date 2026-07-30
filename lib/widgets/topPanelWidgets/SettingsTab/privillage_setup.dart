@@ -48,7 +48,7 @@ class _PrivilegeSettingsTabbedDialogState
 
   Future<void> _fetchChildFunctions(int functionId) async {
     final names = switch (functionId) {
-      1 => ['Settlement', 'Save KOT', 'Print KOT', 'Discount', 'Item Cancel'],
+      1 => ['Settlement', 'Save Job', 'Print Job', 'Discount', 'Item Cancel'],
       2 => ['Bill Reprint', 'Sales Viewer', 'Counter Close Reports'],
       3 => ['Area Master', 'Table Master', 'Group Master', 'Product Master'],
       _ => ['Control Panel', 'Printer Setup', 'Privilege Setup'],

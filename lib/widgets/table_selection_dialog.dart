@@ -405,7 +405,7 @@ class _TableSelectionDialogState extends State<TableSelectionDialog> {
     final kotId = row?['kotMasterID']?.toString();
     if (kotId == null || kotId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No KOT found on this chair/table')),
+        const SnackBar(content: Text('No job found on this chair')),
       );
       return;
     }

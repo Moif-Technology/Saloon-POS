@@ -5,12 +5,14 @@ class MockApiService implements ApiService {
   static final List<Map<String, dynamic>> _createdAreas = [];
   static final List<Map<String, dynamic>> _createdSubGroups = [];
   static final List<Map<String, dynamic>> _createdProducts = [];
+  static final List<Map<String, dynamic>> _createdCustomers = [];
   static final List<Map<String, dynamic>> _createdTables = [];
   static final Map<String, Map<String, dynamic>> _openKots = {};
   static int _nextGroupId = 100;
   static int _nextAreaId = 100;
   static int _nextSubGroupId = 100;
   static int _nextProductId = 100;
+  static int _nextCustomerId = 100;
   static int _nextTableId = 100;
   static int _nextKotNo = 3;
   static int _nextSaleNo = 2;
@@ -943,9 +945,11 @@ class MockApiService implements ApiService {
   }
 
   @override
-  Future<List<dynamic>> fetchCustomers({int limit = 400}) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return [
+  Future<List<dynamic>> fetchCustomers(
+      {int limit = 400, String? search}) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final all = <Map<String, dynamic>>[
+      ..._createdCustomers,
       {
         'CustomerID': '1',
         'customerId': 1,
@@ -953,11 +957,26 @@ class MockApiService implements ApiService {
         'customerCode': 'C001',
         'CustomerName': 'Ahmed Ali',
         'customerName': 'Ahmed Ali',
+        'companyName': 'Ahmed Trading',
         'City': 'Dubai',
+        'city': 'Dubai',
+        'Country': 'UNITED ARAB EMIRATES',
+        'country': 'UNITED ARAB EMIRATES',
         'Telephone': '0501111111',
+        'telephone': '0501111111',
         'MobileNo': '0501111111',
+        'mobileNo': '0501111111',
         'CustTRN': 'TRN-001',
-        'Address': 'Dubai Marina'
+        'taxRegNo': 'TRN-001',
+        'Address': 'Dubai Marina',
+        'address': 'Dubai Marina',
+        'paymentMode': 'CASH',
+        'creditLimit': '5000',
+        'creditBalance': '0',
+        'creditPeriodDays': '30',
+        'customerType': 'Retail',
+        'loyaltyCustStatus': 'Yes',
+        'creditStatus': 'ACTIVE',
       },
       {
         'CustomerID': '2',
@@ -967,10 +986,13 @@ class MockApiService implements ApiService {
         'CustomerName': 'Sara Khan',
         'customerName': 'Sara Khan',
         'City': 'Abu Dhabi',
+        'city': 'Abu Dhabi',
         'Telephone': '0502222222',
         'MobileNo': '0502222222',
         'CustTRN': 'TRN-002',
-        'Address': 'Corniche Road'
+        'Address': 'Corniche Road',
+        'paymentMode': 'CREDIT',
+        'creditStatus': 'ACTIVE',
       },
       {
         'CustomerID': '3',
@@ -982,10 +1004,130 @@ class MockApiService implements ApiService {
         'City': 'Sharjah',
         'Telephone': '0503333333',
         'MobileNo': '0503333333',
-        'CustTRN': '',
-        'Address': 'Al Majaz'
+        'Address': 'Al Majaz',
+        'paymentMode': 'CASH',
+        'creditStatus': 'ACTIVE',
       },
     ];
+    final q = (search ?? '').trim().toLowerCase();
+    if (q.isEmpty) return all;
+    return all
+        .where((c) => c.values.any(
+            (v) => v?.toString().toLowerCase().contains(q) ?? false))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> createCustomer(
+      Map<String, dynamic> payload) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final id = (_nextCustomerId++).toString();
+    final code = payload['newBarcode'] == true
+        ? 'CUS-${id.padLeft(5, '0')}'
+        : (payload['customerCode']?.toString().trim().isNotEmpty == true
+            ? payload['customerCode'].toString().trim()
+            : 'CUS-$id');
+    final name = payload['customerName']?.toString() ?? 'Customer $id';
+    final row = {
+      'CustomerID': id,
+      'customerId': int.parse(id),
+      'CustomerCode': code,
+      'customerCode': code,
+      'CustomerName': name,
+      'customerName': name,
+      'companyName': payload['companyName']?.toString() ?? '',
+      'City': payload['city']?.toString() ?? '',
+      'city': payload['city']?.toString() ?? '',
+      'Country': payload['country']?.toString() ?? '',
+      'country': payload['country']?.toString() ?? '',
+      'Telephone': payload['telephone']?.toString() ?? '',
+      'telephone': payload['telephone']?.toString() ?? '',
+      'MobileNo': payload['mobileNo']?.toString() ?? '',
+      'mobileNo': payload['mobileNo']?.toString() ?? '',
+      'CustTRN': payload['taxRegNo']?.toString() ?? '',
+      'taxRegNo': payload['taxRegNo']?.toString() ?? '',
+      'Address': payload['address']?.toString() ?? '',
+      'address': payload['address']?.toString() ?? '',
+      'addressArabic': payload['addressArabic']?.toString() ?? '',
+      'poBox': payload['poBox']?.toString() ?? '',
+      'contactPerson': payload['contactPerson']?.toString() ?? '',
+      'designation': payload['designation']?.toString() ?? '',
+      'faxNo': payload['faxNo']?.toString() ?? '',
+      'email': payload['email']?.toString() ?? '',
+      'paymentMode': payload['paymentMode']?.toString() ?? 'CASH',
+      'creditLimit': payload['creditLimit']?.toString() ?? '',
+      'creditPeriodDays': payload['creditPeriodDays']?.toString() ?? '',
+      'creditBalance': payload['creditBalance']?.toString() ?? '',
+      'customerType': payload['customerType']?.toString() ?? '',
+      'loyaltyCustStatus': payload['loyaltyCustStatus']?.toString() ?? 'No',
+      'creditStatus': payload['creditStatus']?.toString() ?? 'ACTIVE',
+      'remarks': payload['remarks']?.toString() ?? '',
+    };
+    _createdCustomers.insert(0, row);
+    return {
+      'success': true,
+      'customerId': int.parse(id),
+      'customerCode': code,
+      'customerName': name,
+      'message': 'Customer created',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateCustomer(
+      String customerId, Map<String, dynamic> payload) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final idx = _createdCustomers
+        .indexWhere((c) => c['CustomerID']?.toString() == customerId);
+    final name = payload['customerName']?.toString() ?? 'Customer $customerId';
+    final code = payload['customerCode']?.toString() ?? 'CUS-$customerId';
+    final row = {
+      'CustomerID': customerId,
+      'customerId': int.tryParse(customerId) ?? 0,
+      'CustomerCode': code,
+      'customerCode': code,
+      'CustomerName': name,
+      'customerName': name,
+      'companyName': payload['companyName']?.toString() ?? '',
+      'City': payload['city']?.toString() ?? '',
+      'city': payload['city']?.toString() ?? '',
+      'Country': payload['country']?.toString() ?? '',
+      'country': payload['country']?.toString() ?? '',
+      'Telephone': payload['telephone']?.toString() ?? '',
+      'telephone': payload['telephone']?.toString() ?? '',
+      'MobileNo': payload['mobileNo']?.toString() ?? '',
+      'mobileNo': payload['mobileNo']?.toString() ?? '',
+      'CustTRN': payload['taxRegNo']?.toString() ?? '',
+      'taxRegNo': payload['taxRegNo']?.toString() ?? '',
+      'Address': payload['address']?.toString() ?? '',
+      'address': payload['address']?.toString() ?? '',
+      'addressArabic': payload['addressArabic']?.toString() ?? '',
+      'poBox': payload['poBox']?.toString() ?? '',
+      'contactPerson': payload['contactPerson']?.toString() ?? '',
+      'designation': payload['designation']?.toString() ?? '',
+      'faxNo': payload['faxNo']?.toString() ?? '',
+      'email': payload['email']?.toString() ?? '',
+      'paymentMode': payload['paymentMode']?.toString() ?? 'CASH',
+      'creditLimit': payload['creditLimit']?.toString() ?? '',
+      'creditPeriodDays': payload['creditPeriodDays']?.toString() ?? '',
+      'creditBalance': payload['creditBalance']?.toString() ?? '',
+      'customerType': payload['customerType']?.toString() ?? '',
+      'loyaltyCustStatus': payload['loyaltyCustStatus']?.toString() ?? 'No',
+      'creditStatus': payload['creditStatus']?.toString() ?? 'ACTIVE',
+      'remarks': payload['remarks']?.toString() ?? '',
+    };
+    if (idx >= 0) {
+      _createdCustomers[idx] = row;
+    } else {
+      _createdCustomers.add(row);
+    }
+    return {
+      'success': true,
+      'customerId': int.tryParse(customerId) ?? 0,
+      'customerCode': code,
+      'customerName': name,
+      'message': 'Customer updated',
+    };
   }
 
   @override
@@ -1094,10 +1236,120 @@ class MockApiService implements ApiService {
     final description = payload['description']?.toString() ??
         payload['productName']?.toString() ??
         'Product $id';
+    final barcode = (payload['newBarcode'] == true &&
+            (payload['barcode']?.toString().trim().isEmpty ?? true))
+        ? 'BAR-${id.padLeft(6, '0')}'
+        : payload['barcode']?.toString() ?? '';
     _createdProducts.add({
       'ProductID': id,
       'ProductCode': payload['productCode']?.toString() ?? 'P$id',
-      'ShortDescription': description,
+      'ShortDescription':
+          payload['shortDescription']?.toString() ?? description,
+      'ProductName': description,
+      'Barcode': barcode,
+      'UnitPrice': payload['unitPrice']?.toString() ?? '0.00',
+      'Tax1Rate': payload['vatOutPct']?.toString() ?? '15',
+      'GroupID': payload['groupId']?.toString() ?? '',
+      'SubGroupID': payload['subGroupId']?.toString() ?? '',
+      'Unit': payload['unit']?.toString() ?? 'PCS',
+      'PackQty': payload['packQty']?.toString() ?? '1',
+      'ProductType': payload['productType']?.toString() ?? 'Stock',
+      'MakeType': payload['makeType']?.toString() ?? 'Standard',
+      '_raw': Map<String, dynamic>.from(payload)..['barcode'] = barcode,
+    });
+    return {
+      'success': true,
+      'productId': int.parse(id),
+      'message': 'Product created'
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchProductById(String productId) async {
+    await Future.delayed(const Duration(milliseconds: 120));
+    final found = _createdProducts.cast<Map<String, dynamic>?>().firstWhere(
+          (p) => p?['ProductID']?.toString() == productId,
+          orElse: () => null,
+        );
+    final raw = found?['_raw'] as Map<String, dynamic>? ?? {};
+    final name = found?['ProductName']?.toString() ?? 'Mock product $productId';
+    final unitPrice =
+        double.tryParse(found?['UnitPrice']?.toString() ?? '') ?? 25.0;
+    final vatOutPct =
+        double.tryParse(found?['Tax1Rate']?.toString() ?? '') ?? 5.0;
+    final vatOut = unitPrice * vatOutPct / 100;
+    return {
+      'productId': int.tryParse(productId) ?? 0,
+      'productCode': found?['ProductCode'] ?? 'P$productId',
+      'barcode': found?['Barcode'] ?? '',
+      'productName': name,
+      'shortName': found?['ShortDescription'] ?? name,
+      'descriptionArabic': raw['descriptionArabic'] ?? '',
+      'makeType': raw['makeType'] ?? found?['MakeType'] ?? 'Standard',
+      'productType': raw['productType'] ?? found?['ProductType'] ?? 'Stock',
+      'stockType': raw['stockType'] ?? 'Normal',
+      'groupId': int.tryParse(found?['GroupID']?.toString() ?? '') ??
+          int.tryParse(raw['groupId']?.toString() ?? ''),
+      'subgroupId': int.tryParse(found?['SubGroupID']?.toString() ?? '') ??
+          int.tryParse(raw['subGroupId']?.toString() ?? ''),
+      'unitName': found?['Unit'] ?? raw['unit'] ?? 'PCS',
+      'packQty':
+          double.tryParse(found?['PackQty']?.toString() ?? '') ?? 1.0,
+      'inventory': {
+        'unitPrice': unitPrice,
+        'averageCost':
+            double.tryParse(raw['baseCost']?.toString() ?? '') ?? 10.0,
+        'lastPurchaseCost':
+            double.tryParse(raw['lastPurchCost']?.toString() ?? '') ?? 10.0,
+        'qtyOnHand':
+            double.tryParse(raw['qtyOnHand']?.toString() ?? '') ?? 0.0,
+        'reorderLevel':
+            double.tryParse(raw['reorderLevel']?.toString() ?? '') ?? 0.0,
+        'reorderQty':
+            double.tryParse(raw['reorderQty']?.toString() ?? '') ?? 0.0,
+        'packQty':
+            double.tryParse(found?['PackQty']?.toString() ?? '') ?? 1.0,
+        'inputTax1Rate':
+            double.tryParse(raw['vatInPct']?.toString() ?? '') ?? vatOutPct,
+        'inputTax1Amount':
+            double.tryParse(raw['vatIn']?.toString() ?? '') ?? 0.0,
+        'outputTax1Rate': vatOutPct,
+        'outputTax1Amount': vatOut,
+        'priceLevel1':
+            double.tryParse(raw['priceLevel1']?.toString() ?? '') ?? 0.0,
+        'priceLevel2':
+            double.tryParse(raw['priceLevel2']?.toString() ?? '') ?? 0.0,
+        'priceLevel3':
+            double.tryParse(raw['priceLevel3']?.toString() ?? '') ?? 0.0,
+        'priceLevel4':
+            double.tryParse(raw['priceLevel4']?.toString() ?? '') ?? 0.0,
+        'priceLevel5':
+            double.tryParse(raw['priceLevel5']?.toString() ?? '') ?? 0.0,
+        'minimumRetailPrice':
+            double.tryParse(raw['minUnitPrice']?.toString() ?? '') ?? 0.0,
+        'discountPercentage':
+            double.tryParse(raw['discountPct']?.toString() ?? '') ?? 0.0,
+        'minimumMarginPercentage':
+            double.tryParse(raw['marginPct']?.toString() ?? '') ?? 0.0,
+        'locationCode': raw['location'] ?? 'Main',
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateProduct(
+      String productId, Map<String, dynamic> payload) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final idx = _createdProducts
+        .indexWhere((p) => p['ProductID']?.toString() == productId);
+    final description = payload['description']?.toString() ??
+        payload['productName']?.toString() ??
+        'Product $productId';
+    final row = {
+      'ProductID': productId,
+      'ProductCode': payload['productCode']?.toString() ?? 'P$productId',
+      'ShortDescription':
+          payload['shortDescription']?.toString() ?? description,
       'ProductName': description,
       'Barcode': payload['barcode']?.toString() ?? '',
       'UnitPrice': payload['unitPrice']?.toString() ?? '0.00',
@@ -1106,11 +1358,19 @@ class MockApiService implements ApiService {
       'SubGroupID': payload['subGroupId']?.toString() ?? '',
       'Unit': payload['unit']?.toString() ?? 'PCS',
       'PackQty': payload['packQty']?.toString() ?? '1',
-    });
+      'ProductType': payload['productType']?.toString() ?? 'Stock',
+      'MakeType': payload['makeType']?.toString() ?? 'Standard',
+      '_raw': Map<String, dynamic>.from(payload),
+    };
+    if (idx >= 0) {
+      _createdProducts[idx] = row;
+    } else {
+      _createdProducts.add(row);
+    }
     return {
       'success': true,
-      'productId': int.parse(id),
-      'message': 'Product created'
+      'productId': int.tryParse(productId) ?? 0,
+      'message': 'Product updated'
     };
   }
 
@@ -1202,10 +1462,20 @@ class MockApiService implements ApiService {
       'lines': lines,
     };
     return {
+      'ok': true,
       'success': true,
+      'msg': 'Job $kotNumber saved successfully.',
+      'message': 'Job $kotNumber saved successfully.',
+      'jobId': kotMasterId,
+      'jobNo': kotNumber,
+      'currentJobId': kotMasterId,
+      'CurrentKOTID': kotMasterId,
+      'currentKotId': kotMasterId,
       'kotMasterId': kotMasterId,
       'kotNumber': kotNumber,
-      'message': 'KOT saved successfully',
+      'newKotChildIds': <String>[],
+      'kotDetails': {'success': true, 'data': lines},
+      'data': lines,
     };
   }
 
@@ -1215,77 +1485,59 @@ class MockApiService implements ApiService {
     await Future.delayed(const Duration(milliseconds: 300));
     final rows = <Map<String, dynamic>>[
       {
-        'kotMasterId': 'MK-001',
-        'kotNumber': 'H-001',
-        'tableName': 'T3',
-        'AreaName': 'Main Hall',
-        'staffName': 'Ahmed',
-        'customerName': 'Ahmed Ali',
-        'totalAmount': 145.00,
-        'status': 'OPEN',
-        'itemCount': 3,
-        'createdAt': '2026-06-16T12:30:00',
+        'JobID': '1',
+        'JobNo': 'SJ-001',
+        'kotMasterID': '1',
+        'KotNumber': 'SJ-001',
+        'ChairName': 'Chair 3',
+        'CustomerName': 'Ahmed Ali',
+        'PrimaryStylistName': 'Ahmed',
+        'Amount': '145.00',
+        'JobStatus': 'OPEN',
+        'StartTime': '2026-06-16T12:30:00',
       },
       {
-        'kotMasterId': 'MK-002',
-        'kotNumber': 'V-001',
-        'tableName': 'V1',
-        'AreaName': 'VIP Room',
-        'staffName': 'John',
-        'customerName': 'Sara Khan',
-        'totalAmount': 320.00,
-        'status': 'OPEN',
-        'itemCount': 5,
-        'createdAt': '2026-06-16T13:00:00',
+        'JobID': '2',
+        'JobNo': 'SJ-002',
+        'kotMasterID': '2',
+        'KotNumber': 'SJ-002',
+        'ChairName': 'Chair 1',
+        'CustomerName': 'Sara Khan',
+        'PrimaryStylistName': 'John',
+        'Amount': '320.00',
+        'JobStatus': 'OPEN',
+        'StartTime': '2026-06-16T13:00:00',
       },
       {
-        'kotMasterId': 'MK-003',
-        'kotNumber': 'H-002',
-        'tableName': 'T5',
-        'AreaName': 'Main Hall',
-        'staffName': 'Fatima',
-        'customerName': 'Omar Hassan',
-        'totalAmount': 78.50,
-        'status': 'OPEN',
-        'itemCount': 2,
-        'createdAt': '2026-06-16T13:30:00',
-      },
-      {
-        'kotMasterId': 'MK-004',
-        'kotNumber': 'H-003',
-        'tableName': 'T7',
-        'AreaName': 'Main Hall',
-        'staffName': 'Ali',
-        'customerName': 'Layla Mahmoud',
-        'totalAmount': 215.00,
-        'status': 'BILL_REQUESTED',
-        'itemCount': 4,
-        'createdAt': '2026-06-16T14:00:00',
+        'JobID': '3',
+        'JobNo': 'SJ-003',
+        'kotMasterID': '3',
+        'KotNumber': 'SJ-003',
+        'ChairName': 'Walk-in',
+        'CustomerName': 'Omar Hassan',
+        'PrimaryStylistName': 'Fatima',
+        'Amount': '78.50',
+        'JobStatus': 'OPEN',
+        'StartTime': '2026-06-16T13:30:00',
       },
       ..._openKots.values.map((kot) => {
-            'kotMasterId': kot['kotMasterId'],
-            'kotNumber': kot['kotNumber'],
-            'tableName': kot['tableName'],
-            'AreaName': kot['AreaName'],
-            'staffName': kot['staffName'],
-            'customerName': kot['customerName'],
-            'totalAmount': kot['totalAmount'],
-            'status': kot['status'],
-            'itemCount': kot['itemCount'],
-            'createdAt': kot['createdAt'],
-            'areaId': kot['areaId'],
+            'JobID': kot['kotMasterId'],
+            'JobNo': kot['kotNumber'],
+            'kotMasterID': kot['kotMasterId'],
+            'KotNumber': kot['kotNumber'],
+            'ChairName': kot['tableName'],
+            'CustomerName': kot['customerName'],
+            'PrimaryStylistName': kot['staffName'],
+            'Amount': '${kot['totalAmount']}',
+            'JobStatus': kot['status'],
+            'StartTime': kot['createdAt'],
+            'AreaName': kot['areaName'],
           }),
     ];
     return rows.where((row) {
-      final areaOk = areaId == null ||
-          areaId.isEmpty ||
-          areaId == 'All' ||
-          row['areaId']?.toString() == areaId ||
-          row['areaName']?.toString() == areaId;
       final q = search?.trim().toLowerCase() ?? '';
-      final searchOk = q.isEmpty ||
-          row.values.any((v) => v.toString().toLowerCase().contains(q));
-      return areaOk && searchOk;
+      if (q.isEmpty) return true;
+      return row.values.any((v) => v.toString().toLowerCase().contains(q));
     }).toList();
   }
 

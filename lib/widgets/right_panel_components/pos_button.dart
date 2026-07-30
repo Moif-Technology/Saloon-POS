@@ -13,6 +13,9 @@ class PosButton extends StatefulWidget {
   final bool compact;
   final bool isBaseVersion;
 
+  /// When true with [filledColor], paints a white-fade gradient instead of a flat fill.
+  final bool highlightFade;
+
   const PosButton({
     super.key,
     required this.label,
@@ -23,6 +26,7 @@ class PosButton extends StatefulWidget {
     this.expanded = true,
     this.compact = false,
     this.isBaseVersion = false,
+    this.highlightFade = false,
   });
 
   @override
@@ -174,11 +178,26 @@ class _PosButtonState extends State<PosButton>
       tile = LayoutBuilder(
         builder: (context, c) {
           final textOnly = c.maxWidth < 120;
+          final fill = widget.filledColor;
+          final useFade = widget.highlightFade && fill != null;
+
           return Container(
             height: h,
             margin: EdgeInsets.all(widget.compact ? 0.25 : 0.5),
             decoration: BoxDecoration(
-              color: widget.filledColor ?? Colors.white,
+              gradient: useFade
+                  ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color.lerp(fill, Colors.white, 0.55)!,
+                        fill,
+                        Color.lerp(fill, Colors.black, 0.08)!,
+                      ],
+                      stops: const [0.0, 0.55, 1.0],
+                    )
+                  : null,
+              color: useFade ? null : (fill ?? Colors.white),
               border: Border.all(color: const Color(0xFF521C1D), width: 0.5),
             ),
             child: TextButton(

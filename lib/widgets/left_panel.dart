@@ -8,7 +8,6 @@ import 'package:my_app/services/api_service.dart';
 import 'package:my_app/widgets/leftPanelWidgets/add_customer.dart'; // new
 import 'package:my_app/widgets/leftPanelWidgets/change_price.dart';
 import 'package:my_app/widgets/leftPanelWidgets/change_qty.dart';
-import 'package:my_app/widgets/leftPanelWidgets/modifier_panel.dart';
 
 import 'left_panel_components/left_top_bar.dart' as left_top_bar;
 import 'left_panel_components/left_items_list.dart';
@@ -278,7 +277,7 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
           return AlertDialog(
             title: const Text("Combine or Replace Items?"),
             content: const Text(
-                "There are already items in the table. Do you want to merge them with new KOT items or replace them?"),
+                "There are already items in the grid. Merge with this job, or replace them?"),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, null),
@@ -316,12 +315,13 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
         widget.selectedProducts.add({
           "ShortDescription": item["ShortDescription"] ?? "Unknown",
           "quantity": (item["Qty"] ?? item["qty"] ?? 1).toString(),
-          "UnitPrice": item["UnitPrice"].toString(),
-          "Tax1Rate": item["Tax1RateC"].toString(),
+          "UnitPrice": (item["UnitPrice"] ?? item["unitPrice"] ?? 0).toString(),
+          "Tax1Rate": (item["Tax1RateC"] ?? item["Tax1Rate"] ?? 0).toString(),
           "BarCode": item["BarCode"] ?? "",
-          "modifiers": (item["Modifier"] ?? item["Remarks"] ?? "").toString(),
-          // Preserve for Save KOT: distinguish existing vs new items
+          "modifiers": (item["modifier"] ?? item["Remarks"] ?? "").toString(),
+          // Preserve for Save Job: existing lines are skipped on append
           "dgvKOTChildID": kotChildId != null ? kotChildId.toString() : "",
+          "LineID": (item["LineID"] ?? kotChildId ?? "").toString(),
           "ProductID": productId != null ? productId.toString() : "",
           "UniqueProductID":
               (item["UniqueProductID"] ?? item["uniqueProductID"] ?? "0")
@@ -329,7 +329,6 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
           "GroupID": (item["GroupID"] ?? item["groupID"] ?? "0").toString(),
           "ItemCode":
               (item["DescriptionArabic"] ?? item["BarCode"] ?? "").toString(),
-          // Keep existing print status for loaded items; new items will have no key → PENDING when saving
           "AndroidPrint":
               (item["Androidprint"] ?? item["AndroidPrint"] ?? "PENDING")
                   .toString(),
@@ -337,29 +336,50 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
                   item["kotDisplayStatus"] ??
                   "PENDING")
               .toString(),
+          "StylistID":
+              (item["StylistID"] ?? item["stylistID"] ?? "").toString(),
+          "StylistName":
+              (item["StylistName"] ?? item["stylistName"] ?? "").toString(),
+          "LineType":
+              (item["LineType"] ?? item["lineType"] ?? "PRODUCT").toString(),
+          "ProductType":
+              (item["ProductType"] ?? item["LineType"] ?? "").toString(),
         });
       }
 
       final first = items.first as Map<String, dynamic>;
       kotPrefix = (first["KotPrefix"] ?? first["KOTPrefix"] ?? "").toString();
-      kotNumber =
-          (first["KOTNumber"] ?? first["KotNumber"] ?? first["kotNumber"] ?? "")
-              .toString();
+      kotNumber = (first["JobNo"] ??
+              first["KOTNumber"] ??
+              first["KotNumber"] ??
+              first["kotNumber"] ??
+              "")
+          .toString();
       isKOTActive = true;
 
-      // Set area/table/seat from loaded KOT so Save KOT has context (order list flow)
+      // Set area/chair from loaded job so Save Job can append
       final areaId = first["AreaID"] ?? first["areaID"];
       if (areaId != null) {
         ref.read(selectedAreaIdProvider.notifier).state = areaId.toString();
         ref.read(selectedAreaNameProvider.notifier).state =
             (first["AreaName"] ?? first["areaName"] ?? "").toString();
       }
-      final tableId = first["TableID"] ?? first["tableID"];
-      if (tableId != null)
+      final tableId = first["TableID"] ??
+          first["tableID"] ??
+          first["ChairID"] ??
+          first["chairId"];
+      if (tableId != null) {
         ref.read(selectedTableIdProvider.notifier).state = tableId.toString();
+      }
       final chairNo = first["ChairNo"] ?? first["chairNo"];
-      if (chairNo != null)
+      if (chairNo != null) {
         ref.read(selectedSeatNoProvider.notifier).state = chairNo.toString();
+      }
+      final custId = first["CustomerID"] ?? first["customerId"];
+      if (custId != null && custId.toString().isNotEmpty) {
+        selectedCustomerId = custId.toString();
+        ref.read(selectedCustomerIdProvider.notifier).state = custId.toString();
+      }
     }
 
     _publishCartSnapshot();
@@ -373,24 +393,6 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
       setState(() {
         widget.selectedProducts.removeAt(selectedRowIndex!);
         selectedRowIndex = null;
-      });
-      _publishCartSnapshot();
-    }
-  }
-
-  void showProductModifierDialog(int index) async {
-    final selectedModifiers = await showDialog<List<String>>(
-      context: context,
-      builder: (BuildContext context) => ModifierSelectionDialog(
-        initialSelectedModifiers:
-            widget.selectedProducts[index]["modifiers"]?.split(", ") ?? [],
-      ),
-    );
-
-    if (selectedModifiers != null) {
-      setState(() {
-        widget.selectedProducts[index]["modifiers"] =
-            selectedModifiers.join(", ");
       });
       _publishCartSnapshot();
     }
@@ -499,8 +501,6 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
             PopupMenuItem<String>(value: 'qty', child: Text('🔢 Change Qty')),
             PopupMenuItem<String>(
                 value: 'price', child: Text('💲 Price Change')),
-            PopupMenuItem<String>(
-                value: 'modifier', child: Text('📝 Add Modifier')),
           ];
     final selected = await showMenu<String>(
       context: context,
@@ -524,9 +524,6 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
       case 'price':
         _showPriceChangeDialog(index);
         break;
-      case 'modifier':
-        showProductModifierDialog(index);
-        break;
     }
   }
 
@@ -534,9 +531,23 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AddCustomerDialog();
+        return const AddCustomerDialog();
       },
-    ).then((_) => _fetchCustomers());
+    ).then((result) {
+      _fetchCustomers();
+      if (result is Map && mounted) {
+        final name = result['CustomerName']?.toString() ?? '';
+        final id = result['CustomerID']?.toString() ?? '';
+        if (name.isEmpty) return;
+        setState(() {
+          selectedCustomerName = name;
+          selectedCustomerId = id;
+        });
+        ref.read(selectedCustomerNameProvider.notifier).state = name;
+        ref.read(selectedCustomerIdProvider.notifier).state =
+            id.isNotEmpty ? id : null;
+      }
+    });
   }
 
   // ===================== BUILD =====================
@@ -674,7 +685,7 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
                 compact: compact,
                 currencyPrecession: currencyPrecession,
                 isBaseVersion: widget.isBaseVersion,
-                showModifier: posUi.cartModifier,
+                showModifier: false,
                 showQtyControls: posUi.cartQtyControls,
                 showUnitPrice: posUi.cartUnitPrice,
                 showSubtotal: posUi.cartSubtotal,
@@ -691,9 +702,7 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
                   setState(() => selectedRowIndex = index);
                   _showContextMenuWithOffset(globalPos, index);
                 },
-                onModifierTap: (index) {
-                  if (posUi.cartModifier) showProductModifierDialog(index);
-                },
+                onModifierTap: (_) {},
                 onRemoveItem: widget.isBaseVersion && posUi.cartDelete
                     ? (index) {
                         setState(() {
