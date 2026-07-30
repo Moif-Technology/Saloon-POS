@@ -22,7 +22,6 @@ import 'package:my_app/core/providers/parameterProviders.dart';
 import '../utils/sessionManager.dart';
 import '../utils/empty_kot_response.dart';
 import 'rightPanelWidgets/right_panels_widgets_import.dart';
-import 'table_selection_dialog.dart';
 
 // ✅ NEW COMPONENT IMPORTS
 import 'right_panel_components/right_panel_compact_actions.dart';
@@ -1091,7 +1090,6 @@ class _RightPanelState extends ConsumerState<RightPanel> {
     final canUseTables = posUi.tablesPanel;
     final canUseAreas = posUi.areasPanel;
     final canUseSettlement = posUi.settlement;
-    final canUseDelivery = posUi.delivery;
     final canUseCashInOut = posUi.cashInOut;
     final canUseDiscount = posUi.discount;
     final canUseItemCancel = posUi.itemCancel;
@@ -2246,7 +2244,6 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                     onKeypadAppend: _keypadAppend,
                     onKeypadDot: _keypadDot,
                     onKeypadBackspace: _keypadBackspace,
-                    onTakeAwayList: showTakeAwayList,
                     onAreaChange: canUseAreas
                         ? () async {
                             final result =
@@ -2302,7 +2299,6 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           }
                         : null,
                     onNoSale: () {},
-                    onDeliveryList: canUseDelivery ? showDeliveryList : null,
                     onOrderList: () {
                       Navigator.push(
                         context,
@@ -2357,17 +2353,6 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                             }
                           }
                         : () {},
-                    onDelivery: canUseDelivery
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    DeliveryManagementDesktopPage(),
-                              ),
-                            );
-                          }
-                        : null,
                     onDirectSettlement: posUi.directSettlement
                         ? () {
                             Navigator.push(
@@ -2388,19 +2373,6 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           }
                         : () {},
                     onReceipts: () {},
-                    onSelectTable: canUseTables
-                        ? () async {
-                            final result = await showDialog<TableSeatSelection>(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (_) => const TableSelectionDialog(),
-                            );
-
-                            if (result != null) {
-                              // TODO: use result.areaId/tableId/seatNo
-                            }
-                          }
-                        : null,
                     onSettlement: widget.isBaseVersion && canUseSettlement
                         ? () {
                             _performSettlement();
@@ -2412,7 +2384,6 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                     showReturn: posUi.returnBill,
                     showDirectSettlement: posUi.directSettlement,
                     showReceipts: posUi.reprintBill,
-                    showTakeAwayList: posUi.has(PosFeature.takeaway),
                     showItemCancel: canUseItemCancel,
                   ),
                 ],

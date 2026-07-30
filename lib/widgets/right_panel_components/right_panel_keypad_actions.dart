@@ -9,21 +9,17 @@ class RightPanelKeypadActions extends StatelessWidget {
   final VoidCallback onKeypadDot;
   final VoidCallback onKeypadBackspace;
 
-  final VoidCallback onTakeAwayList;
   final VoidCallback? onAreaChange;
   final VoidCallback onNoSale;
 
-  final VoidCallback? onDeliveryList;
   final VoidCallback onOrderList;
   final VoidCallback onQtyCommit;
 
   final VoidCallback onReturn1;
-  final VoidCallback? onDelivery;
   final VoidCallback onDirectSettlement;
 
   final VoidCallback onItemCancel;
   final VoidCallback onReceipts;
-  final VoidCallback? onSelectTable;
   final VoidCallback? onSettlement;
   final bool showNoSale;
   final bool showOrderList;
@@ -31,7 +27,6 @@ class RightPanelKeypadActions extends StatelessWidget {
   final bool showReturn;
   final bool showDirectSettlement;
   final bool showReceipts;
-  final bool showTakeAwayList;
   final bool showItemCancel;
 
   const RightPanelKeypadActions({
@@ -41,18 +36,14 @@ class RightPanelKeypadActions extends StatelessWidget {
     required this.onKeypadAppend,
     required this.onKeypadDot,
     required this.onKeypadBackspace,
-    required this.onTakeAwayList,
     required this.onAreaChange,
     required this.onNoSale,
-    required this.onDeliveryList,
     required this.onOrderList,
     required this.onQtyCommit,
     required this.onReturn1,
-    required this.onDelivery,
     required this.onDirectSettlement,
     required this.onItemCancel,
     required this.onReceipts,
-    required this.onSelectTable,
     this.onSettlement,
     this.showNoSale = true,
     this.showOrderList = true,
@@ -60,7 +51,6 @@ class RightPanelKeypadActions extends StatelessWidget {
     this.showReturn = true,
     this.showDirectSettlement = true,
     this.showReceipts = true,
-    this.showTakeAwayList = true,
     this.showItemCancel = true,
   });
 
@@ -311,11 +301,6 @@ class RightPanelKeypadActions extends StatelessWidget {
 
     final actions = <List<Widget>>[
       [
-        if (!isBaseVersion && showTakeAwayList)
-          PosButton(
-              label: "Walk-In\nList",
-              icon: Icons.list_alt,
-              onPressed: onTakeAwayList),
         if (!isBaseVersion && onAreaChange != null)
           PosButton(
               label: "Section\nChange",
@@ -329,11 +314,6 @@ class RightPanelKeypadActions extends StatelessWidget {
               isBaseVersion: isBaseVersion),
       ],
       [
-        if (!isBaseVersion && onDeliveryList != null)
-          PosButton(
-              label: "Visit\nList",
-              icon: Icons.list_alt,
-              onPressed: onDeliveryList!),
         if (showOrderList)
           PosButton(
               label: "Job\nList",
@@ -354,11 +334,6 @@ class RightPanelKeypadActions extends StatelessWidget {
               icon: Icons.undo,
               onPressed: onReturn1,
               isBaseVersion: isBaseVersion),
-        if (!isBaseVersion && onDelivery != null)
-          PosButton(
-              label: "Visit",
-              icon: Icons.directions_walk,
-              onPressed: onDelivery!),
         if (!isBaseVersion && showDirectSettlement)
           PosButton(
               label: "Direct",
@@ -371,17 +346,6 @@ class RightPanelKeypadActions extends StatelessWidget {
               label: "Item\nCancel",
               icon: Icons.cancel,
               onPressed: onItemCancel),
-        if (showReceipts)
-          PosButton(
-              label: "Receipts",
-              icon: Icons.receipt,
-              onPressed: onReceipts,
-              isBaseVersion: isBaseVersion),
-        if (!isBaseVersion && onSelectTable != null)
-          PosButton(
-              label: "Select Chair",
-              icon: Icons.event_seat,
-              onPressed: onSelectTable!),
       ],
     ];
 
