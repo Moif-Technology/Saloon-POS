@@ -1061,17 +1061,6 @@ class TopBar extends ConsumerWidget {
                         value: "Report View", child: Text("Report View")),
                 ],
               ),
-              const SizedBox(width: 20),
-              ElevatedButton.icon(
-                onPressed: () => _openAppointmentsDialog(context),
-                icon: const Icon(Icons.calendar_today, size: 18),
-                label: const Text("Appointments"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF521C1D),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-              ),
               if (!isBaseVersion) const SizedBox(width: 20),
               if (!isBaseVersion && hasPosFeature(ref, 'pos.credit'))
                 buildMenuButton(
@@ -1219,6 +1208,18 @@ class TopBar extends ConsumerWidget {
               child: const SizedBox.expand(),
             ),
           ),
+          ElevatedButton.icon(
+            onPressed: () => _openAppointmentsDialog(context),
+            icon: const Icon(Icons.calendar_today, size: 16),
+            label: const Text("Appointments"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF521C1D),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              textStyle: const TextStyle(fontSize: 13),
+            ),
+          ),
+          const SizedBox(width: 12),
           _buildWaiterNameChip(context),
           _buildRefreshFeaturesButton(context, ref),
           _buildVersionChip(context, ref),
