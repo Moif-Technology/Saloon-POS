@@ -102,6 +102,13 @@ class PosFeature {
   static const cashierChange = 'pos.cashier_change';
   static const dayClose = 'pos.day_close';
   static const gameZone = 'pos.game_zone';
+
+  // Salon-specific features
+  static const salonJobs = 'salon.jobs';
+  static const salonStylists = 'salon.stylists';
+  static const salonAppointments = 'salon.appointments';
+  static const salonServiceStatus = 'salon.service_status';
+  static const salonStylistReassign = 'salon.stylist_reassign';
 }
 
 class PosUiFeatures {
@@ -160,4 +167,11 @@ class PosUiFeatures {
   bool get totalsSubtotal => has(PosFeature.totalsSubtotal);
   bool get totalsTax => has(PosFeature.totalsTax);
   bool get totalsGrandTotal => has(PosFeature.totalsGrandTotal);
+
+  // Salon-specific features
+  bool get salonJobs => has(PosFeature.salonJobs);
+  bool get salonStylists => has(PosFeature.salonStylists);
+  bool get salonAppointments => has(PosFeature.salonAppointments);
+  bool get salonServiceStatus => has(PosFeature.salonServiceStatus);
+  bool get salonStylistReassign => has(PosFeature.salonStylistReassign);
 }

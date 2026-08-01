@@ -1404,7 +1404,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                     showReprintKot: posUi.kotReprint &&
                         isControlEnabled(ref, 'btnKOTReprint'),
                     showSaveKot:
-                        posUi.kotSave && isControlEnabled(ref, 'btnSaveKOT'),
+                        posUi.kotSave && isControlEnabled(ref, 'btnSaveKOT') && posUi.salonJobs,
                     showDiscount:
                         canUseDiscount && isControlEnabled(ref, 'btnDiscount'),
                     showDummyBill: posUi.kotDummyBill &&
@@ -2715,7 +2715,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                     showDirectSettlement: posUi.directSettlement,
                     showReceipts: posUi.reprintBill,
                     showItemCancel: canUseItemCancel,
-                    showAppointments: true,
+                    showAppointments: posUi.salonAppointments,
                   ),
                 ],
               ),

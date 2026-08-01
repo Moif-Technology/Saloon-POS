@@ -807,7 +807,7 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
                 LeftActionButtons(
                   compact: compact,
                   isBaseVersion: widget.isBaseVersion,
-                  showNewKot: posUi.kotSave,
+                  showNewKot: posUi.kotSave && posUi.salonJobs,
                   showQtyChange: posUi.quantityChange,
                   showPriceChange: posUi.priceChange,
                   onNewKot: _confirmAndResetKOT,
