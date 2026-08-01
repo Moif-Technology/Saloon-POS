@@ -11,6 +11,8 @@ import 'package:my_app/utils/sessionStorage.dart';
 // file is kept so the username/password page can be routed to if needed.
 import 'package:my_app/screens/salon_auth_gate.dart';
 import 'package:my_app/screens/session_bootstrap_wrapper.dart';
+import 'package:my_app/config/business_config.dart';
+import 'package:my_app/core/providers/business_provider.dart';
 import 'package:my_app/core/update/update_gate.dart';
 
 Future<void> main() async {
@@ -88,6 +90,10 @@ Future<void> restoreSession() async {
   final permissions = session['permissions'] is List
       ? List<dynamic>.from(session['permissions'] as List)
       : null;
+  final businessType = session['businessType']?.toString().trim();
+  final branding = session['branding'] is Map
+      ? Map<String, dynamic>.from(session['branding'] as Map)
+      : null;
 
   // Only restore if all values are non-null and non-empty (fixes new device showing "Restoring session" forever).
   if (stationId != null &&
@@ -109,6 +115,8 @@ Future<void> restoreSession() async {
       features: features,
       limits: limits,
       permissions: permissions,
+      businessType: businessType,
+      branding: branding,
     );
     print(
         "Session restored: Station ID - $stationId, Staff Name - $staffName, StaffID - $staffID");
@@ -127,14 +135,14 @@ bool get hasValidSession {
   return sid.isNotEmpty && name.isNotEmpty && staffId.isNotEmpty;
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
+class MyApp extends ConsumerStatefulWidget {
+  const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   /// Persist the /pin-login session, then rebuild so `hasValidSession` sends the
   /// app into SessionBootstrapWrapper. Mirrors what MainLoginPage does after a
   /// username/password login, so both entry points leave identical state behind.
@@ -142,6 +150,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final stationId = (session['stationId'] ?? '').toString();
     final staffName = (session['staffName'] ?? '').toString();
     final staffID = (session['staffID'] ?? '').toString();
+    final businessType = _sessionBusinessType(session);
+    final branding = session['branding'] is Map
+        ? Map<String, dynamic>.from(session['branding'] as Map)
+        : null;
 
     await SessionStorage.saveSession(
       stationId,
@@ -153,6 +165,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       features: session['features'] as Map<String, dynamic>?,
       limits: session['limits'] as Map<String, dynamic>?,
       permissions: session['permissions'] as List<dynamic>?,
+      businessType: businessType,
+      branding: branding,
     );
 
     SessionManager().setSession(
@@ -165,6 +179,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       features: session['features'] as Map<String, dynamic>?,
       limits: session['limits'] as Map<String, dynamic>?,
       permissions: session['permissions'] as List<dynamic>?,
+      businessType: businessType,
+      branding: branding,
+    );
+
+    ref.read(appBrandProvider.notifier).state = brandFromSession(
+      businessType: businessType,
+      branding: branding,
     );
 
     if (mounted) setState(() {});
@@ -193,9 +214,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final brand = ref.watch(appBrandProvider);
     return MaterialApp(
-      title: 'POS Application',
-      theme: ThemeData(primarySwatch: Colors.brown),
+      title: brand.appName,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: brand.primaryColor),
+        primaryColor: brand.primaryColor,
+      ),
 
       // ✅ IMPORTANT FIX:
       // - keep text scaler stable
@@ -212,12 +237,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       home: UpdateGate(
         child: hasValidSession
-            ? const SessionBootstrapWrapper()
+            ? SessionBootstrapWrapper() // Do NOT use const: need rebuild on session clear
             // Salon till flow: unenrolled devices enroll first, then staff sign
             // in by PIN. The old username/password page (MainLoginPage) is still
             // in the tree and reachable, but is no longer the default entry.
             : SalonAuthGate(onLoggedIn: _onPinLoggedIn),
       ),
     );
+  }
+
+  String _sessionBusinessType(Map<String, dynamic> session) {
+    return (session['business_type'] ??
+            session['businessType'] ??
+            session['pos_type'] ??
+            session['posType'] ??
+            defaultBusinessType.value)
+        .toString();
   }
 }

@@ -23,6 +23,9 @@ class UpdateService {
     int? buildNumber,
     String? platformOverride,
   }) async {
+    final mocked = _mockUpdateResponse(currentVersion, buildNumber);
+    if (mocked != null) return mocked;
+
     if (useMockData) {
       return const AppUpdateResponse(
         success: true,
@@ -56,5 +59,65 @@ class UpdateService {
     }
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     return AppUpdateResponse.fromJson(decoded);
+  }
+
+  AppUpdateResponse? _mockUpdateResponse(
+      String currentVersion, int? buildNumber) {
+    switch (mockUpdateMode.trim().toLowerCase()) {
+      case 'optional':
+        return AppUpdateResponse(
+          success: true,
+          updateAvailable: true,
+          blockApp: false,
+          reason: 'mock_optional_update',
+          latestVersion: '9.9.9',
+          updateMode: 'optional',
+          isOptional: true,
+          title: 'New update available',
+          message: 'Test update is ready. Use Download or Later to confirm UI.',
+          updateUrl: 'https://example.com/salonpos-update',
+          currentVersion: currentVersion,
+          buildNumber: buildNumber,
+        );
+      case 'mandatory':
+        return AppUpdateResponse(
+          success: true,
+          updateAvailable: true,
+          blockApp: true,
+          reason: 'mock_mandatory_update',
+          latestVersion: '9.9.9',
+          minimumSupportedVersion: '9.9.9',
+          updateMode: 'mandatory',
+          isMandatory: true,
+          title: 'Update required',
+          message: 'This is a mandatory update test. POS should be blocked.',
+          updateUrl: 'https://example.com/salonpos-update',
+          currentVersion: currentVersion,
+          buildNumber: buildNumber,
+        );
+      case 'maintenance':
+        return const AppUpdateResponse(
+          success: true,
+          updateAvailable: false,
+          blockApp: true,
+          reason: 'mock_maintenance',
+          maintenanceMode: true,
+          maintenanceMessage:
+              'Maintenance mode test. Retry when server is ready.',
+        );
+      case 'none':
+        return AppUpdateResponse(
+          success: true,
+          updateAvailable: false,
+          blockApp: false,
+          reason: 'mock_no_update',
+          currentVersion: currentVersion,
+          buildNumber: buildNumber,
+        );
+      case '':
+        return null;
+      default:
+        return null;
+    }
   }
 }

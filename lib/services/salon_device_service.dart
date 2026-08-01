@@ -26,8 +26,10 @@ class SalonDeviceService {
   static const _kCompanyId = 'salon_company_id';
   static const _kStationId = 'salon_station_id';
   static const _kStationName = 'salon_station_name';
+  static const _kBusinessType = 'salon_business_type';
+  static const _kBranding = 'salon_branding';
 
-  static const _base = '$baseURL/api/salon-pos';
+  static const _base = '$baseURL$posBasePath';
   static const _timeout = Duration(seconds: 20);
 
   // ── device token ─────────────────────────────────────────────────────────
@@ -41,7 +43,8 @@ class SalonDeviceService {
     // Random.secure() so a token cannot be guessed from another device's.
     final rnd = Random.secure();
     final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
-    final token = 'salon-${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
+    final token =
+        'salon-${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
 
     await prefs.setString(_kDeviceToken, token);
     return token;
@@ -62,6 +65,8 @@ class SalonDeviceService {
       'companyId': prefs.getInt(_kCompanyId),
       'stationId': prefs.getInt(_kStationId),
       'stationName': prefs.getString(_kStationName),
+      'businessType': prefs.getString(_kBusinessType),
+      'branding': _decodeMap(prefs.getString(_kBranding)),
     };
   }
 
@@ -72,6 +77,8 @@ class SalonDeviceService {
     await prefs.remove(_kCompanyId);
     await prefs.remove(_kStationId);
     await prefs.remove(_kStationName);
+    await prefs.remove(_kBusinessType);
+    await prefs.remove(_kBranding);
   }
 
   // ── http ─────────────────────────────────────────────────────────────────
@@ -79,7 +86,8 @@ class SalonDeviceService {
   /// Every salon auth endpoint answers `{ ok, code, message }` on failure, so
   /// one decoder covers them all. Throws [SalonApiException] with the server's
   /// own message — those messages are written to be shown to staff.
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _post(
+      String path, Map<String, dynamic> body) async {
     late http.Response res;
     try {
       res = await _client
@@ -110,7 +118,8 @@ class SalonDeviceService {
     if (res.statusCode >= 200 && res.statusCode < 300) return decoded;
 
     throw SalonApiException(
-      (decoded['message'] ?? 'Request failed (HTTP ${res.statusCode})').toString(),
+      (decoded['message'] ?? 'Request failed (HTTP ${res.statusCode})')
+          .toString(),
       code: decoded['code']?.toString(),
       statusCode: res.statusCode,
     );
@@ -152,7 +161,9 @@ class SalonDeviceService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kCompanyId, (data['companyId'] as num).toInt());
     await prefs.setInt(_kStationId, (data['stationId'] as num).toInt());
-    await prefs.setString(_kStationName, (data['stationName'] ?? '').toString());
+    await prefs.setString(
+        _kStationName, (data['stationName'] ?? '').toString());
+    await _saveBrandingFromResponse(prefs, data);
     return data;
   }
 
@@ -170,6 +181,7 @@ class SalonDeviceService {
     if (data['stationId'] != null) {
       await prefs.setInt(_kStationId, (data['stationId'] as num).toInt());
     }
+    await _saveBrandingFromResponse(prefs, data);
 
     final list = (data['staff'] as List?) ?? const [];
     return list
@@ -199,6 +211,30 @@ class SalonDeviceService {
       'staffId': staffPk, // the picker's staffPk = core.staff_master.id
       'pin': pin,
     });
+  }
+
+  static Future<void> _saveBrandingFromResponse(
+    SharedPreferences prefs,
+    Map<String, dynamic> data,
+  ) async {
+    final businessType = data['business_type'] ?? data['businessType'];
+    if (businessType != null && businessType.toString().trim().isNotEmpty) {
+      await prefs.setString(_kBusinessType, businessType.toString().trim());
+    }
+    final branding = data['branding'];
+    if (branding is Map) {
+      await prefs.setString(_kBranding, jsonEncode(branding));
+    }
+  }
+
+  static Map<String, dynamic>? _decodeMap(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -235,7 +271,8 @@ class SalonStation {
         stationName: (j['stationName'] ?? '').toString(),
         stationCode: j['stationCode']?.toString(),
         branchName: j['branchName']?.toString(),
-        counterNo: j['counterNo'] == null ? null : (j['counterNo'] as num).toInt(),
+        counterNo:
+            j['counterNo'] == null ? null : (j['counterNo'] as num).toInt(),
       );
 }
 
@@ -259,7 +296,8 @@ class SalonStaff {
 
   /// Up to two initials for the avatar tile.
   String get initials {
-    final parts = staffName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final parts =
+        staffName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
     if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
     return (parts.first[0] + parts.last[0]).toUpperCase();

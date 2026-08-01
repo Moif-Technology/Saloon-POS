@@ -5,6 +5,16 @@
 ///     flutter run --dart-define=MOCK=true
 const bool useMockData = bool.fromEnvironment('MOCK', defaultValue: false);
 
+/// Local update UI test mode. Defaults to real backend behavior.
+/// Examples:
+///     flutter run -d windows --dart-define=MOCK_UPDATE=optional
+///     flutter run -d windows --dart-define=MOCK_UPDATE=mandatory
+///     flutter run -d windows --dart-define=MOCK_UPDATE=maintenance
+const String mockUpdateMode = String.fromEnvironment(
+  'MOCK_UPDATE',
+  defaultValue: '',
+);
+
 /// API host. Override per-run without editing source:
 ///     flutter run --dart-define=API_BASE=http://192.168.1.55:5010
 /// Production is https://api.moifone.com
@@ -13,10 +23,14 @@ const String baseURL = String.fromEnvironment(
   defaultValue: 'http://192.168.1.55:5010',
 );
 
-/// Base path for this POS product. Salon endpoints are under /api/salon-pos;
-/// restaurant's are under /api/pos. Kept in one place so switching product is
-/// not a hunt for string literals across api_service.dart.
-const String posBasePath = '/api/salon-pos';
+/// Base path for this POS product.
+/// Examples:
+///     --dart-define=POS_BASE_PATH=/api/salon-pos
+///     --dart-define=POS_BASE_PATH=/api/laundry-pos
+const String posBasePath = String.fromEnvironment(
+  'POS_BASE_PATH',
+  defaultValue: '/api/salon-pos',
+);
 
 /// Legacy HMS toggle (kept for reference). **`ApiService` now uses the unified API only** for
 /// login, POS parameters, privileges list, groups, areas, and sub-groups; other features are

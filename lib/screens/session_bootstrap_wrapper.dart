@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
 import 'package:my_app/core/providers/session_bootstrap_provider.dart';
-import 'package:my_app/screens/home_screen.dart';
-import 'package:my_app/screens/login_screen.dart';
+import 'home_screen.dart';
+import 'salon_auth_gate.dart';
 import 'package:my_app/utils/sessionManager.dart';
 import 'package:my_app/utils/sessionStorage.dart';
 
@@ -51,7 +51,7 @@ class SessionBootstrapWrapper extends ConsumerWidget {
           SessionStorage.clearSession().then((_) {
             if (context.mounted) {
               Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => MainLoginPage()),
+                MaterialPageRoute(builder: (_) => SalonAuthGate(onLoggedIn: (_) {})),
                 (route) => false,
               );
             }

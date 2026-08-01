@@ -221,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
         if (result == null) {
           setState(() {
-            showTables = true;
+            showTables = false;
           });
         } else {
           setState(() {
@@ -245,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       });
     } else {
       setState(() {
-        showTables = isSelected;
+        showTables = false;
         selectedAreaId = areaId;
       });
 
@@ -286,6 +286,43 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       selectedCustomerId = id;
       selectedCustomerName = name;
     });
+  }
+
+  void _onAppointmentSelected(Map<String, dynamic> appointmentData) {
+    setState(() {
+      // Set customer from appointment
+      selectedCustomerId = appointmentData['customerId']?.toString();
+      selectedCustomerName = appointmentData['customerName'];
+
+      // Clear existing products and add appointment services
+      selectedProducts.clear();
+
+      final serviceIds = appointmentData['serviceIds'] as List<dynamic>? ?? [];
+      final serviceNames = appointmentData['serviceNames'] as List<dynamic>? ?? [];
+      final stylistId = appointmentData['stylistId']?.toString() ?? '';
+      final stylistName = appointmentData['stylistName'] ?? 'Stylist';
+
+      // Add each service as a product line
+      for (int i = 0; i < serviceIds.length; i++) {
+        final service = <String, String>{
+          'ProductID': serviceIds[i]?.toString() ?? '',
+          'ProductName': i < serviceNames.length ? serviceNames[i].toString() : 'Service',
+          'LineType': 'SERVICE',
+          'StylistID': stylistId,
+          'StylistName': stylistName,
+          'quantity': '1',
+          'isReturn': 'false',
+        };
+        selectedProducts.add(service);
+      }
+    });
+
+    // Sync cart with Riverpod
+    if (mounted) {
+      ProviderScope.containerOf(context)
+          .read(cartSnapshotProvider.notifier)
+          .state = List<Map<String, String>>.from(selectedProducts);
+    }
   }
 
   void _onKotReset() {
@@ -522,6 +559,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                             areaName: selectedAreaName,
                             selectedTableId: selectedTableId,
                             selectedSeatNo: selectedSeatNo,
+                            onAppointmentSelected: _onAppointmentSelected,
                           );
                         },
                       ),

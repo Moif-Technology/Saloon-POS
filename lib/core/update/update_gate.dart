@@ -4,14 +4,13 @@ import 'package:my_app/core/providers/update_provider.dart';
 import 'package:my_app/core/update/models/app_update_response.dart';
 import 'package:my_app/core/update/update_ui/update_ui.dart';
 import 'package:my_app/core/update/update_launcher.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Runs update check at startup; blocks on maintenance/mandatory, shows optional dialog with Later,
 /// or proceeds to [child]. Does not interrupt once user is past the gate (POS-safe).
 class UpdateGate extends ConsumerStatefulWidget {
   final Widget child;
 
-  const UpdateGate({Key? key, required this.child}) : super(key: key);
+  const UpdateGate({super.key, required this.child});
 
   @override
   ConsumerState<UpdateGate> createState() => _UpdateGateState();
@@ -23,8 +22,8 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
   @override
   Widget build(BuildContext context) {
     // TODO: When adding subscription logic, run subscription check after update check
-  // and combine block_app (e.g. subscription expired) with update block; keep gate order: update first, then subscription.
-  final asyncResult = ref.watch(updateCheckResultProvider);
+    // and combine block_app (e.g. subscription expired) with update block; keep gate order: update first, then subscription.
+    final asyncResult = ref.watch(updateCheckResultProvider);
 
     return asyncResult.when(
       loading: () => const _UpdateCheckLoadingScreen(),
@@ -66,37 +65,22 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
       );
     }
 
-    // Optional update: show overlay/dialog until "Later" or "Update"
+    // Optional update: keep POS usable and show a small corner prompt until
+    // "Later" or "Download".
     if (response.isOptional && !_optionalLaterChosen) {
-      if (kIsWeb) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            buildUpdateUi(
-              context: context,
-              response: response,
-              onUpdate: () =>
-                  performUpdateAction(context, response.updateUrl),
-              onLater: () => setState(() => _optionalLaterChosen = true),
-            ),
-            Expanded(child: widget.child),
-          ],
-        );
-      }
       return Stack(
         children: [
           widget.child,
-          Positioned.fill(
-            child: Material(
-              color: Colors.black54,
-              child: Center(
-                child: buildUpdateUi(
-                  context: context,
-                  response: response,
-                  onUpdate: () =>
-                      performUpdateAction(context, response.updateUrl),
-                  onLater: () => setState(() => _optionalLaterChosen = true),
-                ),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: SafeArea(
+              child: buildOptionalUpdateCornerPrompt(
+                context: context,
+                response: response,
+                onDownload: () =>
+                    performUpdateAction(context, response.updateUrl),
+                onLater: () => setState(() => _optionalLaterChosen = true),
               ),
             ),
           ),

@@ -181,6 +181,9 @@ class _MainLoginPageState extends ConsumerState<MainLoginPage>
       final permissions = loginResponse['permissions'] is List
           ? List<dynamic>.from(loginResponse['permissions'] as List)
           : <dynamic>[];
+      final businessVariant = loginResponse['company'] is Map
+          ? (loginResponse['company']['businessVariant']?.toString() ?? 'salon')
+          : 'salon';
 
       if (stationId != null &&
           stationId.isNotEmpty &&
@@ -198,6 +201,7 @@ class _MainLoginPageState extends ConsumerState<MainLoginPage>
           features: features,
           limits: limits,
           permissions: permissions,
+          businessType: businessVariant,
         );
         await SessionStorage.saveSession(
           stationId,
@@ -209,6 +213,7 @@ class _MainLoginPageState extends ConsumerState<MainLoginPage>
           features: features,
           limits: limits,
           permissions: permissions,
+          businessType: businessVariant,
         );
         if (!mounted) return;
         ref.read(subscriptionProvider.notifier).state = subscription;
@@ -353,6 +358,9 @@ class _MainLoginPageState extends ConsumerState<MainLoginPage>
       final permissions = loginResponse['permissions'] is List
           ? List<dynamic>.from(loginResponse['permissions'] as List)
           : <dynamic>[];
+      final businessVariant = loginResponse['company'] is Map
+          ? (loginResponse['company']['businessVariant']?.toString() ?? 'salon')
+          : 'salon';
 
       if (stationId != null &&
           stationId.isNotEmpty &&
@@ -370,6 +378,7 @@ class _MainLoginPageState extends ConsumerState<MainLoginPage>
           features: features,
           limits: limits,
           permissions: permissions,
+          businessType: businessVariant,
         );
 
         await SessionStorage.saveSession(
@@ -382,6 +391,7 @@ class _MainLoginPageState extends ConsumerState<MainLoginPage>
           features: features,
           limits: limits,
           permissions: permissions,
+          businessType: businessVariant,
         );
         ref.read(subscriptionProvider.notifier).state = subscription;
         ref.read(featuresProvider.notifier).state = features;

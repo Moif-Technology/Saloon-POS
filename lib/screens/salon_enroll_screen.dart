@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_app/config/business_config.dart';
+import 'package:my_app/core/providers/business_provider.dart';
+import 'package:my_app/widgets/brand_logo.dart';
 
 import '../services/salon_device_service.dart';
 
@@ -11,17 +15,17 @@ import '../services/salon_device_service.dart';
 /// The company is derived from the admin's own record on the server; it is never
 /// typed in here. Once paired, the device token is persisted and this screen is
 /// not shown again unless the till is unpaired.
-class SalonEnrollScreen extends StatefulWidget {
+class SalonEnrollScreen extends ConsumerStatefulWidget {
   const SalonEnrollScreen({super.key, required this.onEnrolled});
 
   /// Called after a successful pairing so the app can move to the PIN screen.
   final VoidCallback onEnrolled;
 
   @override
-  State<SalonEnrollScreen> createState() => _SalonEnrollScreenState();
+  ConsumerState<SalonEnrollScreen> createState() => _SalonEnrollScreenState();
 }
 
-class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
+class _SalonEnrollScreenState extends ConsumerState<SalonEnrollScreen> {
   final _service = SalonDeviceService();
   final _userCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -66,7 +70,8 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
     });
 
     try {
-      final stations = await _service.fetchStations(username: user, password: pass);
+      final stations =
+          await _service.fetchStations(username: user, password: pass);
       if (!mounted) return;
       setState(() => _stations = stations);
     } on SalonApiException catch (e) {
@@ -84,13 +89,21 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
     });
 
     try {
-      await _service.enrollDevice(
+      final enrollment = await _service.enrollDevice(
         username: _userCtrl.text.trim(),
         password: _passCtrl.text,
         stationId: station.stationId,
         label: _labelCtrl.text.trim(),
       );
       if (!mounted) return;
+      ref.read(appBrandProvider.notifier).state = brandFromSession(
+        businessType:
+            (enrollment['business_type'] ?? enrollment['businessType'])
+                ?.toString(),
+        branding: enrollment['branding'] is Map
+            ? Map<String, dynamic>.from(enrollment['branding'] as Map)
+            : null,
+      );
       // Clear the admin password from memory as soon as it is no longer needed.
       _passCtrl.clear();
       widget.onEnrolled();
@@ -104,6 +117,7 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = ref.watch(appBrandProvider);
     return Scaffold(
       backgroundColor: const Color(0xFFF3F1F0),
       body: Center(
@@ -113,19 +127,23 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
             constraints: const BoxConstraints(maxWidth: 520),
             child: Card(
               elevation: 3,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(28),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.point_of_sale, size: 44, color: Color(0xFF800000)),
+                    Center(child: BrandLogo(brand: brand, size: 46)),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Set up this till',
+                    Text(
+                      'Set up this ${brand.appName}',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -133,12 +151,14 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
                           ? 'Sign in as an admin to pair this device with a station.'
                           : 'Choose which station this device is.',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.black54, fontSize: 13),
+                      style:
+                          const TextStyle(color: Colors.black54, fontSize: 13),
                     ),
                     const SizedBox(height: 22),
-
-                    if (_stations == null) ..._credentialFields() else ..._stationList(),
-
+                    if (_stations == null)
+                      ..._credentialFields()
+                    else
+                      ..._stationList(),
                     if (_error != null) ...[
                       const SizedBox(height: 16),
                       Container(
@@ -151,24 +171,26 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.error_outline, size: 18, color: Color(0xFFB3261E)),
+                            const Icon(Icons.error_outline,
+                                size: 18, color: Color(0xFFB3261E)),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 _error!,
-                                style: const TextStyle(color: Color(0xFFB3261E), fontSize: 13),
+                                style: const TextStyle(
+                                    color: Color(0xFFB3261E), fontSize: 13),
                               ),
                             ),
                           ],
                         ),
                       ),
                     ],
-
                     const SizedBox(height: 20),
                     Text(
                       'Device ID: ${_deviceToken.isEmpty ? '…' : _deviceToken}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10, color: Colors.black38),
+                      style:
+                          const TextStyle(fontSize: 10, color: Colors.black38),
                     ),
                   ],
                 ),
@@ -224,7 +246,7 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
           height: 48,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF800000),
+              backgroundColor: ref.watch(appBrandProvider).primaryColor,
               foregroundColor: Colors.white,
             ),
             onPressed: _busy ? null : _loadStations,
@@ -232,9 +254,11 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Continue', style: TextStyle(fontWeight: FontWeight.bold)),
+                : const Text('Continue',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
       ];
@@ -248,7 +272,7 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Text(
-            'No salon station exists for this company yet.\n'
+            'No station exists for this company yet.\n'
             'Create one in Backoffice > Stations, then try again.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.black54),
@@ -277,7 +301,10 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.desktop_windows_outlined, color: Color(0xFF800000)),
+                  Icon(
+                    Icons.desktop_windows_outlined,
+                    color: ref.watch(appBrandProvider).primaryColor,
+                  ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -285,7 +312,8 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
                       children: [
                         Text(
                           s.stationName,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -293,7 +321,8 @@ class _SalonEnrollScreenState extends State<SalonEnrollScreen> {
                             if (s.stationCode != null) s.stationCode,
                             if (s.branchName != null) s.branchName,
                           ].whereType<String>().join(' · '),
-                          style: const TextStyle(fontSize: 12, color: Colors.black54),
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.black54),
                         ),
                       ],
                     ),

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_app/config/business_config.dart';
+import 'package:my_app/core/providers/business_provider.dart';
+import 'package:my_app/widgets/brand_logo.dart';
 
 import '../services/salon_device_service.dart';
 
@@ -7,7 +11,7 @@ import '../services/salon_device_service.dart';
 /// Two panes: staff tiles on the left, a numeric pad on the right. Picking a
 /// staff member first means the server verifies exactly one PIN (one bcrypt op)
 /// instead of scanning every staff in the company.
-class SalonPinLoginScreen extends StatefulWidget {
+class SalonPinLoginScreen extends ConsumerStatefulWidget {
   const SalonPinLoginScreen({
     super.key,
     required this.onLoggedIn,
@@ -21,10 +25,11 @@ class SalonPinLoginScreen extends StatefulWidget {
   final VoidCallback onNeedsEnrollment;
 
   @override
-  State<SalonPinLoginScreen> createState() => _SalonPinLoginScreenState();
+  ConsumerState<SalonPinLoginScreen> createState() =>
+      _SalonPinLoginScreenState();
 }
 
-class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
+class _SalonPinLoginScreenState extends ConsumerState<SalonPinLoginScreen> {
   static const _pinMaxLength = 6;
   static const _pinMinLength = 4;
 
@@ -60,6 +65,12 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
         // Skip the picker when there is only one option.
         if (staff.length == 1) _selected = staff.first;
       });
+      ref.read(appBrandProvider.notifier).state = brandFromSession(
+        businessType: enrollment['businessType']?.toString(),
+        branding: enrollment['branding'] is Map
+            ? Map<String, dynamic>.from(enrollment['branding'] as Map)
+            : null,
+      );
     } on SalonApiException catch (e) {
       if (!mounted) return;
       if (e.code == 'NOT_ENROLLED') {
@@ -112,7 +123,8 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
     });
 
     try {
-      final session = await _service.pinLogin(staffPk: _selected!.staffPk, pin: _pin);
+      final session =
+          await _service.pinLogin(staffPk: _selected!.staffPk, pin: _pin);
       if (!mounted) return;
       widget.onLoggedIn(session);
     } on SalonApiException catch (e) {
@@ -176,19 +188,41 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
 
   Widget _header() => Container(
         width: double.infinity,
-        color: const Color(0xFF800000),
+        color: ref.watch(appBrandProvider).primaryColor,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            const Icon(Icons.content_cut, color: Colors.white, size: 20),
+            BrandLogo(
+              brand: ref.watch(appBrandProvider),
+              size: 28,
+              foregroundColor: ref.watch(appBrandProvider).primaryColor,
+              backgroundColor: Colors.white,
+            ),
             const SizedBox(width: 10),
-            const Text(
-              'Salon POS',
-              style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+            Text(
+              ref.watch(appBrandProvider).appName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const Spacer(),
             if (_stationName.isNotEmpty)
-              Text(_stationName, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(_stationName,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(width: 16),
+            TextButton.icon(
+              onPressed: widget.onNeedsEnrollment,
+              icon: const Icon(Icons.refresh, color: Colors.white70, size: 18),
+              label: const Text(
+                'Re-enroll',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              ),
+            ),
           ],
         ),
       );
@@ -255,6 +289,7 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
 
   Widget _staffTile(SalonStaff s) {
     final selected = _selected?.staffPk == s.staffPk;
+    final brand = ref.watch(appBrandProvider);
     return InkWell(
       onTap: _submitting
           ? null
@@ -267,10 +302,10 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF800000) : Colors.white,
+          color: selected ? brand.primaryColor : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? const Color(0xFF800000) : const Color(0xFFDDD8D6),
+            color: selected ? brand.primaryColor : const Color(0xFFDDD8D6),
             width: selected ? 2 : 1,
           ),
         ),
@@ -278,12 +313,13 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor:
-                  selected ? Colors.white24 : const Color(0xFF800000).withValues(alpha: 0.10),
+              backgroundColor: selected
+                  ? Colors.white24
+                  : brand.primaryColor.withValues(alpha: 0.10),
               child: Text(
                 s.initials,
                 style: TextStyle(
-                  color: selected ? Colors.white : const Color(0xFF800000),
+                  color: selected ? Colors.white : brand.primaryColor,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -330,7 +366,9 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            _selected == null ? 'Select your name' : 'Hello, ${_selected!.staffName}',
+            _selected == null
+                ? 'Select your name'
+                : 'Hello, ${_selected!.staffName}',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 14),
@@ -354,15 +392,16 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: List.generate(_pinMaxLength, (i) {
           final filled = i < _pin.length;
+          final color = ref.watch(appBrandProvider).primaryColor;
           return Container(
             margin: const EdgeInsets.symmetric(horizontal: 5),
             width: 14,
             height: 14,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: filled ? const Color(0xFF800000) : Colors.transparent,
+              color: filled ? color : Colors.transparent,
               border: Border.all(
-                color: filled ? const Color(0xFF800000) : const Color(0xFFBDB6B3),
+                color: filled ? color : const Color(0xFFBDB6B3),
                 width: 1.5,
               ),
             ),
@@ -371,7 +410,9 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
       );
 
   Widget _keypad() {
-    Widget key(String label, {VoidCallback? onTap, Color? fg, Color? bg, IconData? icon}) {
+    final brand = ref.watch(appBrandProvider);
+    Widget key(String label,
+        {VoidCallback? onTap, Color? fg, Color? bg, IconData? icon}) {
       return Padding(
         padding: const EdgeInsets.all(5),
         child: SizedBox(
@@ -382,13 +423,15 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
               backgroundColor: bg ?? Colors.white,
               foregroundColor: fg ?? Colors.black87,
               elevation: 1,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: onTap,
             child: icon != null
                 ? Icon(icon, size: 22)
                 : Text(label,
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold)),
           ),
         ),
       );
@@ -420,9 +463,12 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
             key('9', onTap: disabled ? null : () => _tapDigit('9')),
           ]),
           row([
-            key('C', onTap: disabled ? null : _clear, fg: const Color(0xFFB3261E)),
+            key('C',
+                onTap: disabled ? null : _clear, fg: const Color(0xFFB3261E)),
             key('0', onTap: disabled ? null : () => _tapDigit('0')),
-            key('', icon: Icons.backspace_outlined, onTap: disabled ? null : _backspace),
+            key('',
+                icon: Icons.backspace_outlined,
+                onTap: disabled ? null : _backspace),
           ]),
           const SizedBox(height: 8),
           SizedBox(
@@ -430,22 +476,25 @@ class _SalonPinLoginScreenState extends State<SalonPinLoginScreen> {
             height: 52,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF800000),
+                backgroundColor: brand.primaryColor,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: const Color(0xFFBDB6B3),
               ),
-              onPressed:
-                  (_submitting || _selected == null || _pin.length < _pinMinLength)
-                      ? null
-                      : _submit,
+              onPressed: (_submitting ||
+                      _selected == null ||
+                      _pin.length < _pinMinLength)
+                  ? null
+                  : _submit,
               child: _submitting
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : const Text('Sign in',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ),
         ],

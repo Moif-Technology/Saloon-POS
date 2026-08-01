@@ -14,6 +14,8 @@ class SessionStorage {
     Map<String, dynamic>? features,
     Map<String, dynamic>? limits,
     List<dynamic>? permissions,
+    String? businessType,
+    Map<String, dynamic>? branding,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('stationId', stationId);
@@ -49,6 +51,16 @@ class SessionStorage {
     } else {
       await prefs.remove('permissions');
     }
+    if (businessType != null && businessType.trim().isNotEmpty) {
+      await prefs.setString('businessType', businessType.trim());
+    } else {
+      await prefs.remove('businessType');
+    }
+    if (branding != null) {
+      await prefs.setString('branding', jsonEncode(branding));
+    } else {
+      await prefs.remove('branding');
+    }
   }
 
   // Load session data
@@ -64,6 +76,8 @@ class SessionStorage {
       'features': _decodeMap(prefs.getString('features')),
       'limits': _decodeMap(prefs.getString('limits')),
       'permissions': _decodeList(prefs.getString('permissions')),
+      'businessType': prefs.getString('businessType'),
+      'branding': _decodeMap(prefs.getString('branding')),
     };
   }
 
@@ -79,6 +93,8 @@ class SessionStorage {
     await prefs.remove('features');
     await prefs.remove('limits');
     await prefs.remove('permissions');
+    await prefs.remove('businessType');
+    await prefs.remove('branding');
   }
 
   static Map<String, dynamic>? _decodeMap(String? raw) {

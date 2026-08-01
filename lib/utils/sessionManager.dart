@@ -10,6 +10,7 @@ class SessionManager {
   String? stationId;
   String? staffName;
   String? staffID;
+
   /// Moifone unified API JWT (Bearer) for `/api/pos/*` and future migrated routes.
   String? accessToken;
   String? refreshToken;
@@ -17,6 +18,8 @@ class SessionManager {
   Map<String, dynamic>? features;
   Map<String, dynamic>? limits;
   List<dynamic>? permissions;
+  String? businessType;
+  Map<String, dynamic>? branding;
 
   // Set session data
   void setSession({
@@ -29,6 +32,8 @@ class SessionManager {
     Map<String, dynamic>? features,
     Map<String, dynamic>? limits,
     List<dynamic>? permissions,
+    String? businessType,
+    Map<String, dynamic>? branding,
   }) {
     this.stationId = stationId;
     this.staffName = staffName;
@@ -39,6 +44,8 @@ class SessionManager {
     this.features = features;
     this.limits = limits;
     this.permissions = permissions;
+    this.businessType = businessType;
+    this.branding = branding;
   }
 
   // Clear session data
@@ -52,5 +59,7 @@ class SessionManager {
     features = null;
     limits = null;
     permissions = null;
+    businessType = null;
+    branding = null;
   }
 }

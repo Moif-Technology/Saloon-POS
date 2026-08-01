@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:my_app/core/update/models/app_update_response.dart';
 
@@ -46,6 +47,129 @@ Widget buildUpdateUi({
     return _UpdateFailedView(onRetry: onRetry);
   }
   return const _NoUpdateView();
+}
+
+Widget buildOptionalUpdateCornerPrompt({
+  required BuildContext context,
+  required AppUpdateResponse response,
+  required VoidCallback onDownload,
+  required VoidCallback onLater,
+}) {
+  final screenWidth = MediaQuery.sizeOf(context).width;
+  final maxWidth = screenWidth < 380 ? screenWidth - 32 : 340.0;
+  final primary = Theme.of(context).colorScheme.primary;
+
+  return Material(
+    color: Colors.transparent,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE7D8D8)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x26000000),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.system_update_alt,
+                      color: primary,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          response.title ?? 'New update available',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF2A2020),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (response.latestVersion != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Version ${response.latestVersion}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                response.message ?? 'Download the latest version when ready.',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.grey[700],
+                  fontSize: 12,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: onLater,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    child: const Text('Later'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: onDownload,
+                    icon: const Icon(Icons.download, size: 16),
+                    label: const Text('Download'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// Full-screen maintenance mode.
@@ -169,7 +293,8 @@ class _MandatoryUpdateScreen extends StatelessWidget {
               ),
               if (onRetry != null) ...[
                 const SizedBox(height: 12),
-                TextButton(onPressed: onRetry, child: const Text('Retry check')),
+                TextButton(
+                    onPressed: onRetry, child: const Text('Retry check')),
               ],
             ],
           ),
@@ -237,7 +362,8 @@ class _OptionalUpdateDialog extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               response.message ?? 'A new version is available.',
-              style: TextStyle(fontSize: isWindows ? 13 : 14, color: Colors.grey[700]),
+              style: TextStyle(
+                  fontSize: isWindows ? 13 : 14, color: Colors.grey[700]),
             ),
             if (response.changelog != null &&
                 response.changelog!.isNotEmpty) ...[
@@ -304,7 +430,8 @@ class _WebUpdatePrompt extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                response.message ?? 'A new version is available. Refresh to update.',
+                response.message ??
+                    'A new version is available. Refresh to update.',
                 style: TextStyle(fontSize: 13, color: Colors.grey[800]),
               ),
             ),

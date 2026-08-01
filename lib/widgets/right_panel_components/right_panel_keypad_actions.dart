@@ -20,6 +20,7 @@ class RightPanelKeypadActions extends StatelessWidget {
 
   final VoidCallback onItemCancel;
   final VoidCallback onReceipts;
+  final VoidCallback onAppointments;
   final VoidCallback? onSettlement;
   final bool showNoSale;
   final bool showOrderList;
@@ -28,6 +29,7 @@ class RightPanelKeypadActions extends StatelessWidget {
   final bool showDirectSettlement;
   final bool showReceipts;
   final bool showItemCancel;
+  final bool showAppointments;
 
   const RightPanelKeypadActions({
     super.key,
@@ -44,6 +46,7 @@ class RightPanelKeypadActions extends StatelessWidget {
     required this.onDirectSettlement,
     required this.onItemCancel,
     required this.onReceipts,
+    required this.onAppointments,
     this.onSettlement,
     this.showNoSale = true,
     this.showOrderList = true,
@@ -52,6 +55,7 @@ class RightPanelKeypadActions extends StatelessWidget {
     this.showDirectSettlement = true,
     this.showReceipts = true,
     this.showItemCancel = true,
+    this.showAppointments = true,
   });
 
   double _h(double w) {
@@ -346,6 +350,12 @@ class RightPanelKeypadActions extends StatelessWidget {
               label: "Item\nCancel",
               icon: Icons.cancel,
               onPressed: onItemCancel),
+        if (showAppointments)
+          PosButton(
+              label: "Appt",
+              icon: Icons.calendar_today,
+              onPressed: onAppointments,
+              isBaseVersion: isBaseVersion),
       ],
     ];
 

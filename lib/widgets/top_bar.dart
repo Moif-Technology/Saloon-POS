@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_app/core/providers/api_service_provider.dart';
-import 'package:my_app/screens/login_screen.dart';
+import 'package:my_app/core/providers/business_provider.dart';
+import '../screens/salon_auth_gate.dart';
 import 'package:my_app/core/providers/update_provider.dart';
 import 'package:my_app/utils/privilege_utils.dart';
 import 'package:my_app/utils/sessionManager.dart';
@@ -12,9 +13,8 @@ import 'package:my_app/widgets/topPanelWidgets/ReportTab/reportViewer.dart';
 import 'package:my_app/widgets/topPanelWidgets/ReportTab/salesVatReport.dart';
 import 'package:my_app/widgets/topPanelWidgets/top_panel_widgets_imports.dart';
 import 'package:my_app/utils/sessionStorage.dart';
+import 'package:my_app/widgets/brand_logo.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:my_app/widgets/appointment_selection_dialog.dart';
-import 'package:my_app/widgets/appointment_detail_panel.dart';
 
 class TopBar extends ConsumerWidget {
   static const Map<String, String> _dialogFeatureGate = {
@@ -97,7 +97,7 @@ class TopBar extends ConsumerWidget {
     "Change Discount % Button": "pos.discount.apply",
     "Change Settlement": "pos.settlement.change",
     "Cancel Bill Details": "pos.void_bill.execute",
-    "Counter Close - Admin": "pos.counter.close",
+    "Counter Close - Admin": "pos.counter_open_close.view",
     "Privillage Setup": "pos.admin",
     "User List": "pos.admin",
     "Control Panel": "pos.admin",
@@ -237,7 +237,7 @@ class TopBar extends ConsumerWidget {
     if (!context.mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => MainLoginPage()),
+      MaterialPageRoute(builder: (context) => SalonAuthGate(onLoggedIn: (_) {})),
       (route) => false,
     );
   }
@@ -412,52 +412,6 @@ class TopBar extends ConsumerWidget {
     );
   }
 
-  void _openAppointmentsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => AppointmentSelectionDialog(
-        onAppointmentSelected: (appointmentId, customerId, stylistId) {
-          Navigator.pop(context);
-          _showAppointmentDetail(context, appointmentId, customerId, stylistId);
-        },
-        onNewWalkIn: () {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('New walk-in created. Start with area/table selection.'),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _showAppointmentDetail(BuildContext context, String appointmentId, String customerId, String stylistId) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => Dialog(
-        child: SizedBox(
-          width: 600,
-          height: 700,
-          child: AppointmentDetailPanel(
-            appointmentId: appointmentId,
-            customerId: customerId,
-            stylistId: stylistId,
-            onCheckIn: (appointment) {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Checked in: ${appointment['customerName']}'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget buildMenuButton(BuildContext context, String title,
       {List<PopupMenuEntry<String>>? subMenuItems}) {
     return PopupMenuButton<String>(
@@ -560,6 +514,41 @@ class TopBar extends ConsumerWidget {
     );
   }
 
+  Widget _buildBrandChip(WidgetRef ref) {
+    final brand = ref.watch(appBrandProvider);
+    return Container(
+      margin: const EdgeInsets.only(right: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          BrandLogo(
+            brand: brand,
+            size: 26,
+            foregroundColor: brand.primaryColor,
+            backgroundColor: Colors.white,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            brand.appName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _refreshEntitlements(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -615,6 +604,8 @@ class TopBar extends ConsumerWidget {
         features: features,
         limits: limits,
         permissions: permissions,
+        businessType: manager.businessType,
+        branding: manager.branding,
       );
 
       await SessionStorage.saveSession(
@@ -627,6 +618,8 @@ class TopBar extends ConsumerWidget {
         features: features,
         limits: limits,
         permissions: permissions,
+        businessType: manager.businessType,
+        branding: manager.branding,
       );
 
       ref.read(subscriptionProvider.notifier).state = subscription;
@@ -690,6 +683,7 @@ class TopBar extends ConsumerWidget {
         children: [
           Row(
             children: [
+              _buildBrandChip(ref),
               buildMenuButton(
                 context,
                 "New Entry",
@@ -718,8 +712,7 @@ class TopBar extends ConsumerWidget {
                   if (!isBaseVersion) ...[
                     if (hasPosFeature(ref, 'pos.kitchen_message'))
                       const PopupMenuItem<String>(
-                          value: "Job Message",
-                          child: Text("Job Message")),
+                          value: "Job Message", child: Text("Job Message")),
                     if (hasPosFeature(ref, 'pos.combo'))
                       const PopupMenuItem<String>(
                           value: "Combo", child: Text("Combo")),
@@ -1208,18 +1201,6 @@ class TopBar extends ConsumerWidget {
               child: const SizedBox.expand(),
             ),
           ),
-          ElevatedButton.icon(
-            onPressed: () => _openAppointmentsDialog(context),
-            icon: const Icon(Icons.calendar_today, size: 16),
-            label: const Text("Appointments"),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF521C1D),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              textStyle: const TextStyle(fontSize: 13),
-            ),
-          ),
-          const SizedBox(width: 12),
           _buildWaiterNameChip(context),
           _buildRefreshFeaturesButton(context, ref),
           _buildVersionChip(context, ref),

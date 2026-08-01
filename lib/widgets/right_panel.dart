@@ -16,7 +16,7 @@ import 'package:my_app/services/printService/web/receipt_printer.dart'
 import 'package:my_app/utils/privilege_utils.dart';
 import 'package:my_app/utils/kot_reset_utils.dart';
 import 'package:my_app/widgets/rightPanelWidgets/item_cancel.dart';
-import 'package:my_app/widgets/topPanelWidgets/NewEntryTab/product_entry.dart';
+import 'package:my_app/widgets/appointment_selection_dialog.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
 
 import '../utils/sessionManager.dart';
@@ -44,6 +44,7 @@ class RightPanel extends ConsumerStatefulWidget {
   final void Function(bool isSelected, {String? areaId})? onTableSelected;
   final String? selectedTableId;
   final String? selectedSeatNo;
+  final void Function(Map<String, dynamic>)? onAppointmentSelected;
 
   RightPanel({
     super.key,
@@ -58,6 +59,7 @@ class RightPanel extends ConsumerStatefulWidget {
     this.onTableSelected,
     this.selectedTableId,
     this.selectedSeatNo,
+    this.onAppointmentSelected,
   });
 
   @override
@@ -600,6 +602,27 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         isSearching = false;
       });
     }
+  }
+
+  void _openAppointmentsDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => AppointmentSelectionDialog(
+        onAppointmentSelected: (appointmentData) {
+          Navigator.pop(context);
+          widget.onAppointmentSelected?.call(appointmentData);
+        },
+        onNewWalkIn: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Walk-in transaction completed'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _performSettlement() async {
@@ -2373,6 +2396,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                           }
                         : () {},
                     onReceipts: () {},
+                    onAppointments: _openAppointmentsDialog,
                     onSettlement: widget.isBaseVersion && canUseSettlement
                         ? () {
                             _performSettlement();
@@ -2385,6 +2409,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                     showDirectSettlement: posUi.directSettlement,
                     showReceipts: posUi.reprintBill,
                     showItemCancel: canUseItemCancel,
+                    showAppointments: true,
                   ),
                 ],
               ),

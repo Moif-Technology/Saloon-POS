@@ -24,7 +24,7 @@ class LeftActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labelNew = compact ? "New" : "New KOT";
+    final labelNew = compact ? "Job" : "New Job";
     final labelQty = compact ? "Qty" : "Qty Change";
     final labelPrice = compact ? "Price" : "Price Change";
     return Row(
