@@ -18,23 +18,23 @@ class WindowsNativeKOTPrinter {
   /// Print KOT from kotDetails (displayKots response) or from cart + metadata.
   /// kotDetails: { success, data: List<Map> } - each row has header + item fields.
   /// supplyType: DINE IN | PARCEL | DELIVERY
-  /// title: "KITCHEN ORDER TICKET" | "Duplicate KOT" | "CANCEL KOT"
+  /// title: "JOB TICKET" | "Duplicate Job" | "CANCEL JOB"
   static Future<void> printKOT({
     required Map<String, dynamic> kotDetails,
     String supplyType = 'DINE IN',
-    String title = 'KITCHEN ORDER TICKET',
+    String title = 'JOB TICKET',
     String kitchenLocation = 'PASSING',
     void Function(String message)? onError,
   }) async {
     if (!Platform.isWindows) {
-      onError?.call('Windows native KOT print is only available on Windows');
+      onError?.call('Windows native job print is only available on Windows');
       return;
     }
 
     try {
       final data = kotDetails['data'] as List<dynamic>? ?? [];
       if (data.isEmpty) {
-        onError?.call('No KOT data to print');
+        onError?.call('No job data to print');
         return;
       }
 
@@ -126,13 +126,13 @@ class WindowsNativeKOTPrinter {
       };
 
       await _channel.invokeMethod<void>('printKotReceipt', args);
-      log('KOT print sent to Windows native (GDI)');
+      log('Job print sent to Windows native (GDI)');
     } on PlatformException catch (e, st) {
-      log('Windows native KOT print error: $e', stackTrace: st);
-      onError?.call(e.message ?? 'KOT print failed: $e');
+      log('Windows native job print error: $e', stackTrace: st);
+      onError?.call(e.message ?? 'Job print failed: $e');
     } catch (e, st) {
-      log('Windows native KOT print error: $e', stackTrace: st);
-      onError?.call('KOT print failed: $e');
+      log('Windows native job print error: $e', stackTrace: st);
+      onError?.call('Job print failed: $e');
     }
   }
 }

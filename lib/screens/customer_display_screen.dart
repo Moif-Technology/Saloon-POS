@@ -25,7 +25,7 @@ class CustomerDisplayScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("KOT #${order['kot']}",
+          Text("Job #${order['kot']}",
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,

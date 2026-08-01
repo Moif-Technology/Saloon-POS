@@ -21,6 +21,7 @@ class RightPanelKeypadActions extends StatelessWidget {
   final VoidCallback onItemCancel;
   final VoidCallback onReceipts;
   final VoidCallback onAppointments;
+  final VoidCallback? onSelectTable;
   final VoidCallback? onSettlement;
   final bool showNoSale;
   final bool showOrderList;
@@ -47,6 +48,7 @@ class RightPanelKeypadActions extends StatelessWidget {
     required this.onItemCancel,
     required this.onReceipts,
     required this.onAppointments,
+    this.onSelectTable,
     this.onSettlement,
     this.showNoSale = true,
     this.showOrderList = true,
@@ -356,6 +358,11 @@ class RightPanelKeypadActions extends StatelessWidget {
               icon: Icons.calendar_today,
               onPressed: onAppointments,
               isBaseVersion: isBaseVersion),
+        if (!isBaseVersion && onSelectTable != null)
+          PosButton(
+              label: "Select\nChair",
+              icon: Icons.event_seat,
+              onPressed: onSelectTable!),
       ],
     ];
 

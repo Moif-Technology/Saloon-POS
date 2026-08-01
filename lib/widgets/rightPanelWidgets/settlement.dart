@@ -44,6 +44,16 @@ class _SettlementDialogState extends State<SettlementDialog>
   bool _editingPaid = true;
   bool _isSaving = false;
 
+  List<Map<String, dynamic>>? _paymentSplits;
+  String? _onlineSource;
+  String? _complimentApprovedBy;
+  String? _creditCustomerId;
+  String? _creditCustomerName;
+  String? _creditCustomerCode;
+  String? _creditCustomerMobile;
+  String? _creditCustomerAddress;
+  String? _creditCustomerTrn;
+
   @override
   void initState() {
     super.initState();
@@ -90,15 +100,6 @@ class _SettlementDialogState extends State<SettlementDialog>
   }
 
   String _fmtMoney(double v) => v.toStringAsFixed(widget.currencyDecimals);
-
-  /// Rounds to currency decimals so paid vs net comparison is stable (no float noise).
-  double _roundToCurrency(double value) {
-    final int d = widget.currencyDecimals;
-    if (d <= 0) return value.roundToDouble();
-    double factor = 1.0;
-    for (int i = 0; i < d; i++) factor *= 10;
-    return (value * factor).round() / factor;
-  }
 
   void _recalcBalance() {
     final paid = _parseMoney(_paidCtrl.text);
@@ -185,7 +186,13 @@ class _SettlementDialogState extends State<SettlementDialog>
           _dividerV(pad),
           Expanded(
               child: _infoChip(
-                  Icons.person, "Customer", widget.customerName, pad)),
+                  Icons.person,
+                  "Customer",
+                  (_creditCustomerName != null &&
+                          _creditCustomerName!.trim().isNotEmpty)
+                      ? _creditCustomerName!
+                      : widget.customerName,
+                  pad)),
         ],
       ),
     );
@@ -285,18 +292,140 @@ class _SettlementDialogState extends State<SettlementDialog>
     );
   }
 
-  void _onPaymentTap(String method) {
+  void _onPaymentTap(String method) async {
     setState(() => _selectedPayment = method);
 
-    // keep your original dialogs
     if (method == "Credit") {
-      showDialog(context: context, builder: (_) => CustomerLookupDialog());
-    } else if (method == "M-Pay") {
-      showDialog(context: context, builder: (_) => MultiPayDialog());
-    } else if (method == "Online") {
-      showDialog(context: context, builder: (_) => OnlineSourcesDialog());
-    } else if (method == "Compliment") {
-      showDialog(context: context, builder: (_) => Compliment());
+      final picked = await showCreditCustomerDialog(context);
+      if (!mounted) return;
+      if (picked == null) {
+        setState(() {
+          _selectedPayment = "Cash";
+          _creditCustomerId = null;
+          _creditCustomerName = null;
+          _creditCustomerCode = null;
+          _creditCustomerMobile = null;
+          _creditCustomerAddress = null;
+          _creditCustomerTrn = null;
+        });
+        _paidCtrl.text = _fmtMoney(widget.netTotal);
+        _recalcBalance();
+        return;
+      }
+      setState(() {
+        _creditCustomerId = picked.customerId;
+        _creditCustomerName = picked.customerName;
+        _creditCustomerCode = picked.customerCode;
+        _creditCustomerMobile = [
+          picked.mobileNo,
+          picked.telephone,
+        ].whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).join(' / ');
+        _creditCustomerAddress = picked.address;
+        _creditCustomerTrn = picked.taxRegNo;
+      });
+      _paidCtrl.text = _fmtMoney(0);
+      _recalcBalance();
+      return;
+    }
+
+    if (method == "M-Pay") {
+      final result = await showMultiPayDialog(
+        context,
+        billAmount: widget.netTotal,
+        currencyDecimals: widget.currencyDecimals,
+        initialSplits: _paymentSplits,
+      );
+      if (!mounted) return;
+      if (result == null) {
+        setState(() {
+          _selectedPayment = "Cash";
+          _paymentSplits = null;
+        });
+        _paidCtrl.text = _fmtMoney(widget.netTotal);
+        _recalcBalance();
+        return;
+      }
+      setState(() => _paymentSplits = result.splits);
+      _paidCtrl.text = _fmtMoney(widget.netTotal);
+      _recalcBalance();
+      return;
+    }
+
+    if (method == "Online") {
+      final source = await showOnlineSourcesDialog(context);
+      if (!mounted) return;
+      if (source == null) {
+        setState(() {
+          _selectedPayment = "Cash";
+          _onlineSource = null;
+        });
+        return;
+      }
+      setState(() => _onlineSource = source);
+      _paidCtrl.text = _fmtMoney(widget.netTotal);
+      _recalcBalance();
+      return;
+    }
+
+    if (method == "Compliment") {
+      final approvedBy = await showComplimentApprovalDialog(context);
+      if (!mounted) return;
+      if (approvedBy == null) {
+        setState(() {
+          _selectedPayment = "Cash";
+          _complimentApprovedBy = null;
+        });
+        _paidCtrl.text = _fmtMoney(widget.netTotal);
+        _recalcBalance();
+        return;
+      }
+      setState(() => _complimentApprovedBy = approvedBy);
+      _paidCtrl.text = _fmtMoney(0);
+      _recalcBalance();
+      return;
+    }
+
+    // Cash / Card
+    setState(() {
+      _paymentSplits = null;
+      _onlineSource = null;
+      _complimentApprovedBy = null;
+      _creditCustomerId = null;
+      _creditCustomerName = null;
+      _creditCustomerCode = null;
+      _creditCustomerMobile = null;
+      _creditCustomerAddress = null;
+      _creditCustomerTrn = null;
+    });
+    _paidCtrl.text = _fmtMoney(widget.netTotal);
+    _recalcBalance();
+  }
+
+  String? get _customerIdFromOrder {
+    if (_creditCustomerId != null && _creditCustomerId!.isNotEmpty) {
+      return _creditCustomerId;
+    }
+    final o = widget.orderData;
+    if (o == null) return null;
+    final id = (o['customerId'] ?? o['CustomerID'] ?? '').toString().trim();
+    if (id.isEmpty || id == '0') return null;
+    return id;
+  }
+
+  String get _paymentModeApi {
+    switch (_selectedPayment) {
+      case 'Card':
+        return 'CREDITCARD';
+      case 'Credit':
+        return 'CREDIT';
+      case 'M-Pay':
+        return 'MULTIPAYMENT';
+      case 'Online':
+        return 'ONLINE';
+      case 'Compliment':
+        return 'COMPLIMENT';
+      default:
+        return 'CASH';
     }
   }
 
@@ -696,20 +825,7 @@ class _SettlementDialogState extends State<SettlementDialog>
     );
   }
 
-  /// Maps UI payment label to API paymentMode (CASH | CREDITCARD).
-  String get _paymentModeApi {
-    if (_selectedPayment == "Card") return "CREDITCARD";
-    return "CASH";
-  }
-
   Future<void> _onSave() async {
-    if (_selectedPayment != "Cash" && _selectedPayment != "Card") {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Select Cash or Card to settle")),
-      );
-      return;
-    }
     final orderData = widget.orderData;
     if (orderData == null || orderData.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -718,10 +834,43 @@ class _SettlementDialogState extends State<SettlementDialog>
       );
       return;
     }
+
+    final mode = _paymentModeApi;
+    if (mode == 'MULTIPAYMENT' &&
+        (_paymentSplits == null || _paymentSplits!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add multi-payment splits first')),
+      );
+      return;
+    }
+    if (mode == 'ONLINE' &&
+        (_onlineSource == null || _onlineSource!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select an online source')),
+      );
+      return;
+    }
+    if (mode == 'COMPLIMENT' &&
+        (_complimentApprovedBy == null || _complimentApprovedBy!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Compliment needs supervisor approval')),
+      );
+      return;
+    }
+    if (mode == 'CREDIT' && _customerIdFromOrder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Select a credit customer for Credit settlement')),
+      );
+      return;
+    }
+
     final paid = _parseMoney(_paidCtrl.text);
     final net = widget.netTotal;
-    const double _amountTolerance = 0.001;
-    if (paid < net - _amountTolerance) {
+    const double amountTolerance = 0.001;
+    final needsFullPay =
+        mode == 'CASH' || mode == 'CREDITCARD' || mode == 'ONLINE';
+    if (needsFullPay && paid < net - amountTolerance) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -735,13 +884,62 @@ class _SettlementDialogState extends State<SettlementDialog>
     setState(() => _isSaving = true);
     try {
       final payload = Map<String, dynamic>.from(orderData);
-      payload["paidAmount"] = paid;
-      payload["paymentMode"] = _paymentModeApi;
+      payload["paidAmount"] = mode == 'CREDIT' || mode == 'COMPLIMENT'
+          ? 0
+          : (mode == 'MULTIPAYMENT' ? net : paid);
+      payload["paymentMode"] = mode;
+      if (mode == 'MULTIPAYMENT') {
+        payload["paymentSplits"] = _paymentSplits;
+      }
+      if (mode == 'ONLINE') {
+        payload["onlineSource"] = _onlineSource;
+        payload["paymentRefNo"] = _onlineSource;
+      }
+      if (mode == 'COMPLIMENT') {
+        payload["complimentApprovedBy"] = _complimentApprovedBy;
+      }
+      if (_customerIdFromOrder != null) {
+        payload["customerId"] = int.tryParse(_customerIdFromOrder!) ??
+            _customerIdFromOrder;
+      }
+      final printCustName = (_creditCustomerName != null &&
+              _creditCustomerName!.trim().isNotEmpty)
+          ? _creditCustomerName!.trim()
+          : (payload['customerName'] ??
+                  payload['CustomerName'] ??
+                  widget.customerName)
+              .toString()
+              .trim();
+      payload['customerName'] = printCustName;
+      if (_creditCustomerCode != null &&
+          _creditCustomerCode!.trim().isNotEmpty) {
+        payload['customerCode'] = _creditCustomerCode!.trim();
+      }
+      if (_creditCustomerMobile != null &&
+          _creditCustomerMobile!.trim().isNotEmpty) {
+        payload['mobileNo'] = _creditCustomerMobile!.trim();
+      }
+      if (_creditCustomerAddress != null &&
+          _creditCustomerAddress!.trim().isNotEmpty) {
+        payload['address'] = _creditCustomerAddress!.trim();
+      }
+      if (_creditCustomerTrn != null &&
+          _creditCustomerTrn!.trim().isNotEmpty) {
+        payload['taxRegNo'] = _creditCustomerTrn!.trim();
+      }
+
       final apiRes = await ApiService().saveSettlement(payload);
       if (!mounted) return;
       setState(() => _isSaving = false);
       final billNo = apiRes["billNo"]?.toString().trim() ?? "";
       final salesId = apiRes["salesId"]?.toString().trim() ?? "";
+      final jobNo = (apiRes["jobNo"] ??
+              payload["jobNo"] ??
+              payload["JobNo"] ??
+              payload["kotNumber"] ??
+              '')
+          .toString()
+          .trim();
       if (apiRes["ok"] != true || billNo.isEmpty || salesId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -757,17 +955,36 @@ class _SettlementDialogState extends State<SettlementDialog>
       final balancePaid =
           double.tryParse(apiRes["balancePaid"]?.toString() ?? "") ??
               (paid - net).clamp(0.0, double.infinity);
+      final paidForPrint = mode == 'CREDIT' || mode == 'COMPLIMENT'
+          ? 0.0
+          : (mode == 'MULTIPAYMENT' ? net : paid);
+      final outstandingForPrint = double.tryParse(
+            apiRes["outstandingBalance"]?.toString() ?? '',
+          ) ??
+          (mode == 'CREDIT' ? net : 0.0);
       payload["billNo"] = billNo;
       payload["salesId"] = salesId;
+      payload["jobNo"] = jobNo;
+      payload["paidAmount"] = paidForPrint;
+      payload["outstandingBalance"] = outstandingForPrint;
+      payload["customerOsBalance"] = outstandingForPrint;
       final result = <String, dynamic>{
         'billNo': billNo,
         'balancePaid': balancePaid,
         'salesId': salesId,
+        'paymentMode': mode,
+        'jobNo': jobNo,
+        'paidAmount': paidForPrint,
+        'outstandingBalance': outstandingForPrint,
+        'customerOsBalance': outstandingForPrint,
+        if (mode == 'MULTIPAYMENT' &&
+            _paymentSplits != null &&
+            _paymentSplits!.isNotEmpty)
+          'paymentSplits': _paymentSplits,
       };
       if (mounted) {
-        // Show success dialog
-        final modeLabel = _paymentModeApi == "CREDITCARD" ? " (Card)" : "";
-        final message = "Bill #$billNo settled$modeLabel.\nChange: ${balancePaid.toStringAsFixed(widget.currencyDecimals)}";
+        final message =
+            "Bill #$billNo settled ($mode).\nChange: ${balancePaid.toStringAsFixed(widget.currencyDecimals)}";
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -779,7 +996,7 @@ class _SettlementDialogState extends State<SettlementDialog>
               children: [
                 Icon(Icons.check_circle, color: Colors.green.shade700, size: 28),
                 const SizedBox(width: 12),
-                Text(
+                const Text(
                   'Success',
                   style: TextStyle(
                     fontSize: 20,
@@ -797,8 +1014,9 @@ class _SettlementDialogState extends State<SettlementDialog>
               ElevatedButton(
                 onPressed: () => Navigator.of(ctx).pop(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFF521C1D),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  backgroundColor: const Color(0xFF521C1D),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -810,11 +1028,10 @@ class _SettlementDialogState extends State<SettlementDialog>
           ),
         );
         if (!mounted) return;
-        // Pass result + orderData so caller can print receipt (VB PrintCounterBill)
         Navigator.of(context).pop(<String, dynamic>{
           ...result,
           'orderData': payload,
-          'customerName': widget.customerName,
+          'customerName': printCustName,
           'currencyDecimals': widget.currencyDecimals,
         });
       }

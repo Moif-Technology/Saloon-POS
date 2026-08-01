@@ -4,6 +4,8 @@ export 'cash_OUT_IN.dart';
 export 'cash_OUT_entry.dart';
 export 'comments.dart';
 export 'compliment.dart';
+export 'credit_customer_dialog.dart';
+export 'credit_settlement_dialog.dart';
 export 'customer_lookup.dart';
 export 'deliver_change.dart';
 export 'dicount.dart';

@@ -8,6 +8,7 @@ import 'package:my_app/services/api_service.dart';
 import 'package:my_app/widgets/leftPanelWidgets/add_customer.dart'; // new
 import 'package:my_app/widgets/leftPanelWidgets/change_price.dart';
 import 'package:my_app/widgets/leftPanelWidgets/change_qty.dart';
+import 'package:my_app/widgets/common/supervisor_approval_dialog.dart';
 
 import 'left_panel_components/left_top_bar.dart' as left_top_bar;
 import 'left_panel_components/left_items_list.dart';
@@ -57,6 +58,7 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
 
   ProviderSubscription<Map<String, dynamic>>? _kotSub;
   ProviderSubscription<Map<String, dynamic>>? _returnSub;
+  bool _loadingKotIntoGrid = false;
 
   @override
   void initState() {
@@ -265,61 +267,45 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
   }
 
   void _updateTableWithKotDetails(Map<String, dynamic> kotDetails) async {
-    final isFromOrderList = ref.read(isUpdatingFromOrderListProvider);
-
-    ref.read(activeKotProvider.notifier).state = kotDetails;
+    // Invoice from Job List replaces the grid. Avoid Combine dialog while the
+    // Job List popup is closing — that combination froze the till.
+    if (_loadingKotIntoGrid) return;
+    _loadingKotIntoGrid = true;
     ref.read(isUpdatingFromOrderListProvider.notifier).state = false;
 
-    if (widget.selectedProducts.isNotEmpty && isFromOrderList) {
-      bool? userChoice = await showDialog<bool>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text("Combine or Replace Items?"),
-            content: const Text(
-                "There are already items in the grid. Merge with this job, or replace them?"),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: const Text("Cancel"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text("Replace"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text("Merge"),
-              ),
-            ],
-          );
-        },
-      );
+    try {
+      ref.read(activeKotProvider.notifier).state = kotDetails;
 
-      if (userChoice == null) return;
+      if (!mounted) return;
 
-      if (!userChoice) {
-        setState(() => widget.selectedProducts.clear());
-      }
-    } else {
       setState(() => widget.selectedProducts.clear());
-    }
 
-    if (kotDetails.containsKey('data') && kotDetails['data'].isNotEmpty) {
-      List<dynamic> items = kotDetails['data'];
+      final rawData = kotDetails['data'];
+      if (rawData is! List || rawData.isEmpty) {
+        _publishCartSnapshot();
+        if (mounted) setState(() {});
+        return;
+      }
 
-      for (var item in items) {
-        final kotChildId =
-            item["KotChildID"] ?? item["kotChildID"] ?? item["KOTChildID"];
+      for (final raw in rawData) {
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final kotChildId = item["KotChildID"] ??
+            item["kotChildID"] ??
+            item["KOTChildID"] ??
+            item["LineID"];
         final productId = item["ProductID"] ?? item["productID"];
         widget.selectedProducts.add({
-          "ShortDescription": item["ShortDescription"] ?? "Unknown",
+          "ShortDescription":
+              (item["ShortDescription"] ?? "Unknown").toString(),
           "quantity": (item["Qty"] ?? item["qty"] ?? 1).toString(),
-          "UnitPrice": (item["UnitPrice"] ?? item["unitPrice"] ?? 0).toString(),
-          "Tax1Rate": (item["Tax1RateC"] ?? item["Tax1Rate"] ?? 0).toString(),
-          "BarCode": item["BarCode"] ?? "",
-          "modifiers": (item["modifier"] ?? item["Remarks"] ?? "").toString(),
-          // Preserve for Save Job: existing lines are skipped on append
+          "UnitPrice":
+              (item["UnitPrice"] ?? item["unitPrice"] ?? 0).toString(),
+          "Tax1Rate":
+              (item["Tax1RateC"] ?? item["Tax1Rate"] ?? 0).toString(),
+          "BarCode": (item["BarCode"] ?? "").toString(),
+          "modifiers":
+              (item["Modifier"] ?? item["Remarks"] ?? "").toString(),
           "dgvKOTChildID": kotChildId != null ? kotChildId.toString() : "",
           "LineID": (item["LineID"] ?? kotChildId ?? "").toString(),
           "ProductID": productId != null ? productId.toString() : "",
@@ -347,7 +333,7 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
         });
       }
 
-      final first = items.first as Map<String, dynamic>;
+      final first = Map<String, dynamic>.from(rawData.first as Map);
       kotPrefix = (first["KotPrefix"] ?? first["KOTPrefix"] ?? "").toString();
       kotNumber = (first["JobNo"] ??
               first["KOTNumber"] ??
@@ -357,7 +343,6 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
           .toString();
       isKOTActive = true;
 
-      // Set area/chair from loaded job so Save Job can append
       final areaId = first["AreaID"] ?? first["areaID"];
       if (areaId != null) {
         ref.read(selectedAreaIdProvider.notifier).state = areaId.toString();
@@ -380,28 +365,85 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
         selectedCustomerId = custId.toString();
         ref.read(selectedCustomerIdProvider.notifier).state = custId.toString();
       }
-    }
 
-    _publishCartSnapshot();
-    setState(() {});
+      _publishCartSnapshot();
+      if (mounted) setState(() {});
+    } finally {
+      _loadingKotIntoGrid = false;
+    }
   }
 
   // ===================== MODIFIERS / EDITS =====================
 
-  void deleteSelectedRow() {
-    if (selectedRowIndex != null) {
-      setState(() {
-        widget.selectedProducts.removeAt(selectedRowIndex!);
-        selectedRowIndex = null;
-      });
-      _publishCartSnapshot();
-    }
+  /// Already saved on a job (has a line id from Invoice / Save Job).
+  bool _isSavedJobLine(Map<String, String> item) {
+    final id = int.tryParse(
+            (item['dgvKOTChildID'] ?? item['LineID'] ?? item['lineId'] ?? '0')
+                .toString()) ??
+        0;
+    return id > 0;
+  }
+
+  /// Saved lines need supervisor username/password; unsaved lines pass through.
+  Future<bool> _approveIfSavedJobLine(
+    Map<String, String> item, {
+    required String reason,
+  }) async {
+    if (!_isSavedJobLine(item)) return true;
+    final result = await showSupervisorApprovalDialog(
+      context,
+      title: 'Supervisor Approval',
+      reason: reason,
+    );
+    return result != null;
+  }
+
+  Future<void> deleteSelectedRow() async {
+    if (selectedRowIndex == null) return;
+    final index = selectedRowIndex!;
+    if (index < 0 || index >= widget.selectedProducts.length) return;
+    final item = widget.selectedProducts[index];
+    final ok = await _approveIfSavedJobLine(
+      item,
+      reason: 'Delete saved job item "${item['ShortDescription'] ?? 'item'}"',
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      widget.selectedProducts.removeAt(index);
+      selectedRowIndex = null;
+    });
+    _publishCartSnapshot();
+  }
+
+  Future<void> _removeAt(int index) async {
+    if (index < 0 || index >= widget.selectedProducts.length) return;
+    final item = widget.selectedProducts[index];
+    final ok = await _approveIfSavedJobLine(
+      item,
+      reason: 'Delete saved job item "${item['ShortDescription'] ?? 'item'}"',
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      widget.selectedProducts.removeAt(index);
+      selectedRowIndex = null;
+    });
+    _publishCartSnapshot();
   }
 
   Future<void> _showQuantityChangeDialog(int index) async {
-    final currentQty = widget.selectedProducts[index]["quantity"] ?? "1";
-    final productName =
-        widget.selectedProducts[index]["label"] ?? "Unknown Product";
+    if (index < 0 || index >= widget.selectedProducts.length) return;
+    final item = widget.selectedProducts[index];
+    final ok = await _approveIfSavedJobLine(
+      item,
+      reason:
+          'Change quantity on saved job item "${item['ShortDescription'] ?? 'item'}"',
+    );
+    if (!ok || !mounted) return;
+
+    final currentQty = item["quantity"] ?? "1";
+    final productName = item["ShortDescription"] ??
+        item["label"] ??
+        "Unknown Product";
 
     final newQuantity = await showDialog<String>(
       context: context,
@@ -413,12 +455,36 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
       },
     );
 
-    if (newQuantity != null && newQuantity.isNotEmpty) {
+    if (newQuantity != null && newQuantity.isNotEmpty && mounted) {
       setState(() {
         widget.selectedProducts[index]["quantity"] = newQuantity;
       });
       _publishCartSnapshot();
     }
+  }
+
+  Future<void> _changeQtyByDelta(int index, int delta) async {
+    if (index < 0 || index >= widget.selectedProducts.length) return;
+    final item = widget.selectedProducts[index];
+    final ok = await _approveIfSavedJobLine(
+      item,
+      reason:
+          'Change quantity on saved job item "${item['ShortDescription'] ?? 'item'}"',
+    );
+    if (!ok || !mounted) return;
+
+    final qty = int.tryParse(item["quantity"] ?? "1") ?? 1;
+    if (qty + delta < 1) {
+      setState(() {
+        widget.selectedProducts.removeAt(index);
+        selectedRowIndex = null;
+      });
+      _publishCartSnapshot();
+      return;
+    }
+    final newQty = (qty + delta).clamp(1, 999);
+    setState(() => widget.selectedProducts[index]["quantity"] = "$newQty");
+    _publishCartSnapshot();
   }
 
   Future<void> _showPriceChangeDialog(int index) async {
@@ -515,14 +581,13 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
 
     switch (selected) {
       case 'remove':
-        setState(() => widget.selectedProducts.removeAt(index));
-        _publishCartSnapshot();
+        await _removeAt(index);
         break;
       case 'qty':
-        _showQuantityChangeDialog(index);
+        await _showQuantityChangeDialog(index);
         break;
       case 'price':
-        _showPriceChangeDialog(index);
+        await _showPriceChangeDialog(index);
         break;
     }
   }
@@ -704,32 +769,10 @@ class _PosLeftPanelState extends ConsumerState<PosLeftPanel> {
                 },
                 onModifierTap: (_) {},
                 onRemoveItem: widget.isBaseVersion && posUi.cartDelete
-                    ? (index) {
-                        setState(() {
-                          widget.selectedProducts.removeAt(index);
-                          selectedRowIndex = null;
-                        });
-                        _publishCartSnapshot();
-                      }
+                    ? (index) => _removeAt(index)
                     : null,
                 onQtyChange: widget.isBaseVersion && posUi.cartQtyControls
-                    ? (index, delta) {
-                        final qty = int.tryParse(widget.selectedProducts[index]
-                                    ["quantity"] ??
-                                "1") ??
-                            1;
-                        final newQty = (qty + delta).clamp(1, 999);
-                        if (newQty < 1) {
-                          setState(() {
-                            widget.selectedProducts.removeAt(index);
-                            selectedRowIndex = null;
-                          });
-                        } else {
-                          setState(() => widget.selectedProducts[index]
-                              ["quantity"] = "$newQty");
-                        }
-                        _publishCartSnapshot();
-                      }
+                    ? (index, delta) => _changeQtyByDelta(index, delta)
                     : null,
                 asDouble: _asDouble,
                 currencyDecimalsFrom: _currencyDecimalsFrom,

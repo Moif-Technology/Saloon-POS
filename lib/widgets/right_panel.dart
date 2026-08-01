@@ -17,6 +17,7 @@ import 'package:my_app/utils/privilege_utils.dart';
 import 'package:my_app/utils/kot_reset_utils.dart';
 import 'package:my_app/widgets/rightPanelWidgets/item_cancel.dart';
 import 'package:my_app/widgets/appointment_selection_dialog.dart';
+import 'package:my_app/widgets/table_selection_dialog.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
 
 import '../utils/sessionManager.dart';
@@ -80,6 +81,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
   bool isDeliveryListView = false;
   int selectedTableChairs = 0;
   int selectedSearchIndex = -1;
+  Timer? _searchDebounce;
 
   String selectedOrderType = 'Walk-In';
   final Map<String, List<String>> tableChairs = {};
@@ -98,6 +100,33 @@ class _RightPanelState extends ConsumerState<RightPanel> {
   @override
   void initState() {
     super.initState();
+    searchFocusNode.onKeyEvent = (node, event) {
+      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+      if (!isSearchingByName || searchResults.isEmpty) {
+        return KeyEventResult.ignored;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        setState(() {
+          if (selectedSearchIndex < 0) {
+            selectedSearchIndex = 0;
+          } else if (selectedSearchIndex < searchResults.length - 1) {
+            selectedSearchIndex++;
+          }
+        });
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        setState(() {
+          if (selectedSearchIndex > 0) {
+            selectedSearchIndex--;
+          } else {
+            selectedSearchIndex = 0;
+          }
+        });
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    };
     Future.microtask(() {
       fetchTakeAwayList();
       fetchDeliveryList();
@@ -176,6 +205,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     searchController.dispose();
     searchFocusNode.dispose();
     super.dispose();
@@ -355,21 +385,94 @@ class _RightPanelState extends ConsumerState<RightPanel> {
   }
 
   Future<void> performSearch(String query) async {
-    if (query.isEmpty) {
+    final q = query.trim();
+    if (q.isEmpty) {
       setState(() {
         isSearching = false;
-        searchResults.clear();
+        searchResults = [];
+        selectedSearchIndex = -1;
+      });
+      return;
+    }
+
+    // Item Code mode: do not live-search; wait for Enter (scan behaviour).
+    if (!isSearchingByName) {
+      setState(() {
+        isSearching = false;
+        searchResults = [];
+        selectedSearchIndex = -1;
       });
       return;
     }
 
     setState(() => isSearching = true);
-    final results = <Map<String, dynamic>>[];
+    try {
+      final results = await ApiService().fetchProducts(search: q, limit: 80);
+      if (!mounted) return;
+      // Ignore stale responses when the query has already changed.
+      if (searchController.text.trim() != q) return;
+      setState(() {
+        searchResults = results
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        isSearching = false;
+        selectedSearchIndex = searchResults.isEmpty ? -1 : 0;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isSearching = false;
+        searchResults = [];
+        selectedSearchIndex = -1;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Search failed: $e')),
+      );
+    }
+  }
 
-    setState(() {
-      searchResults = results;
-      isSearching = false;
-    });
+  /// Item Code / barcode scan: type code + Enter → add first exact match to grid.
+  Future<void> _lookupCodeAndAdd(String code) async {
+    final q = code.trim();
+    if (q.isEmpty) return;
+
+    setState(() => isSearching = true);
+    try {
+      var results = await ApiService().fetchProducts(barcode: q, limit: 5);
+      if (results.isEmpty) {
+        results = await ApiService().fetchProducts(productCode: q, limit: 5);
+      }
+      if (results.isEmpty) {
+        // Fallback: search then prefer exact barcode/code match
+        final loose = await ApiService().fetchProducts(search: q, limit: 20);
+        results = loose.where((e) {
+          if (e is! Map) return false;
+          final bar = (e['Barcode'] ?? e['barcode'] ?? '').toString();
+          final pc = (e['ProductCode'] ?? e['productCode'] ?? '').toString();
+          return bar == q || pc.toLowerCase() == q.toLowerCase();
+        }).toList();
+        if (results.isEmpty && loose.isNotEmpty) {
+          results = [loose.first];
+        }
+      }
+      if (!mounted) return;
+      if (results.isEmpty) {
+        setState(() => isSearching = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No item found for code "$q"')),
+        );
+        return;
+      }
+      final product = Map<String, dynamic>.from(results.first as Map);
+      _selectSearchItem(product);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => isSearching = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lookup failed: $e')),
+      );
+    }
   }
 
   double _asDouble(dynamic v) {
@@ -943,6 +1046,72 @@ class _RightPanelState extends ConsumerState<RightPanel> {
     final areaId = ref.read(selectedAreaIdProvider);
     final tableId = ref.read(selectedTableIdProvider);
     final custId = ref.read(selectedCustomerIdProvider);
+    final custName = ref.read(selectedCustomerNameProvider);
+    String customerCode = '';
+    String customerMobile = (firstRow?['MobileNo'] ??
+            firstRow?['mobileNo'] ??
+            '')
+        .toString()
+        .trim();
+    String customerAddress = '';
+    String customerTrn = '';
+    final custIdStr = (custId ?? '').trim();
+    if (custIdStr.isNotEmpty && custIdStr != '0') {
+      try {
+        final rows = await ApiService().fetchCustomers(
+          search: (custName ?? '').trim().isNotEmpty ? custName!.trim() : null,
+          limit: 50,
+        );
+        Map<String, dynamic>? match;
+        for (final r in rows) {
+          if (r is! Map) continue;
+          final m = Map<String, dynamic>.from(r);
+          final id = (m['CustomerID'] ?? m['customerId'] ?? '').toString();
+          if (id == custIdStr) {
+            match = m;
+            break;
+          }
+        }
+        if (match == null) {
+          final nameKey = (custName ?? '').trim().toLowerCase();
+          if (nameKey.isNotEmpty) {
+            for (final r in rows) {
+              if (r is! Map) continue;
+              final m = Map<String, dynamic>.from(r);
+              final n = (m['CustomerName'] ?? m['customerName'] ?? '')
+                  .toString()
+                  .trim()
+                  .toLowerCase();
+              if (n == nameKey) {
+                match = m;
+                break;
+              }
+            }
+          }
+        }
+        if (match != null) {
+          customerCode =
+              (match['CustomerCode'] ?? match['customerCode'] ?? '')
+                  .toString()
+                  .trim();
+          final mob = (match['MobileNo'] ?? match['mobileNo'] ?? '')
+              .toString()
+              .trim();
+          final tel = (match['Telephone'] ?? match['telephone'] ?? '')
+              .toString()
+              .trim();
+          if (mob.isNotEmpty || tel.isNotEmpty) {
+            customerMobile = [mob, tel]
+                .where((e) => e.isNotEmpty)
+                .join(' / ');
+          }
+          customerAddress =
+              (match['Address'] ?? match['address'] ?? '').toString().trim();
+          customerTrn =
+              (match['CustTRN'] ?? match['taxRegNo'] ?? '').toString().trim();
+        }
+      } catch (_) {}
+    }
     final firstRowWaiter = firstRow != null
         ? int.tryParse((firstRow['WaiterID'] ?? firstRow['waiterId'] ?? 0)
                 .toString()) ??
@@ -1002,17 +1171,38 @@ class _RightPanelState extends ConsumerState<RightPanel> {
               : null),
       'kotNumber': firstRow?['KotNumber'] ??
           firstRow?['KOTNumber'] ??
+          firstRow?['JobNo'] ??
+          firstRow?['jobNo'] ??
           (items.isNotEmpty
-              ? (items.first['KotNumber'] ?? items.first['KOTNumber'])
+              ? (items.first['KotNumber'] ??
+                  items.first['KOTNumber'] ??
+                  items.first['JobNo'])
               : null),
-      'tableName':
-          firstRow?['TableName'] ?? selectedTable ?? tableId?.toString(),
-      'waiterName': firstRow?['WaiterName'] ?? firstRow?['waiterName'],
+      'jobNo': firstRow?['JobNo'] ??
+          firstRow?['jobNo'] ??
+          firstRow?['KotNumber'] ??
+          firstRow?['KOTNumber'],
+      'tableName': firstRow?['ChairName'] ??
+          firstRow?['TableName'] ??
+          selectedTable ??
+          tableId?.toString(),
+      'chairName': firstRow?['ChairName'] ?? firstRow?['TableName'],
+      'waiterName': firstRow?['PrimaryStylistName'] ??
+          firstRow?['WaiterName'] ??
+          firstRow?['waiterName'] ??
+          firstRow?['stylistName'],
+      'stylistName': firstRow?['PrimaryStylistName'] ??
+          firstRow?['WaiterName'] ??
+          firstRow?['stylistName'],
       'cashierName': SessionManager().staffName,
-      'orderType': 'DINE IN',
-      'comments': '0',
+      'orderType': 'WALK-IN',
+      'comments': '',
+      'customerName': custName ?? '',
+      'customerCode': customerCode,
+      'mobileNo': customerMobile,
+      'address': customerAddress,
+      'taxRegNo': customerTrn,
     };
-    final custName = ref.read(selectedCustomerNameProvider);
     final currencyPrecession = ref.read(currencyPrecessionProvider) ?? '0.00';
     final int currencyDecimals = _currencyDecimalsFrom(currencyPrecession);
     final result = await showDialog<Map<String, dynamic>>(
@@ -1825,19 +2015,88 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                               0;
                           return lineId <= 0;
                         }
-                        final linesToSave = hasLoadedKot
+                        final newLines = hasLoadedKot
                             ? cart.where(isNewCartLine).toList()
                             : cart;
-                        if (linesToSave.isEmpty) {
+
+                        // Loaded job + no new lines: treat as successful update
+                        // of the same job (no API insert, no error).
+                        if (hasLoadedKot && newLines.isEmpty) {
+                          if (mounted) {
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                backgroundColor: Colors.white,
+                                title: Row(
+                                  children: [
+                                    Icon(Icons.check_circle,
+                                        color: Colors.green.shade700, size: 28),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      'Updated',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF521C1D),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                content: const Text(
+                                  'Job updated. No new items to add.',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                actions: [
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.of(ctx).pop(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF521C1D),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 24, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: const Text('OK',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.white)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          // Refresh job details so grid/line ids stay in sync
+                          try {
+                            final refreshed = await ApiService()
+                                .fetchKotDetails('$loadedKotMasterId');
+                            if (mounted &&
+                                refreshed['data'] is List &&
+                                (refreshed['data'] as List).isNotEmpty) {
+                              ref.read(kotDetailsProvider.notifier).state =
+                                  refreshed;
+                              ref.read(activeKotProvider.notifier).state =
+                                  refreshed;
+                            }
+                          } catch (_) {}
+                          return;
+                        }
+
+                        if (newLines.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(hasLoadedKot
-                                  ? 'No new items to add. Add items, then tap Save Job.'
-                                  : 'Add at least one item'),
-                            ),
+                            const SnackBar(
+                                content: Text('Add at least one item')),
                           );
                           return;
                         }
+
+                        final linesToSave = newLines;
 
                         double subTotal = 0, taxTotal = 0, grandTotal = 0;
                         final itemsPayload = linesToSave.map((p) {
@@ -2209,27 +2468,51 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                       controller: searchController,
                       focusNode: searchFocusNode,
                       onToggleNameCode: () {
+                        _searchDebounce?.cancel();
                         setState(() {
                           isSearchingByName = !isSearchingByName;
                           searchController.clear();
+                          searchResults = [];
+                          isSearching = false;
+                          selectedSearchIndex = -1;
+                        });
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          searchFocusNode.requestFocus();
                         });
                       },
                       onChanged: (query) {
                         selectedSearchIndex = -1;
-                        if (isSearchingByName &&
-                            !RegExp(r'^\d{6,}$').hasMatch(query)) {
-                          performSearch(query);
+                        if (!isSearchingByName) {
+                          // Code mode: wait for Enter (barcode scan style)
+                          setState(() {
+                            searchResults = [];
+                            isSearching = false;
+                          });
+                          return;
                         }
+                        _searchDebounce?.cancel();
+                        _searchDebounce =
+                            Timer(const Duration(milliseconds: 280), () {
+                          performSearch(query);
+                        });
                       },
                       onSubmitted: (query) {
                         if (!isSearchingByName) {
-                          performSearch(query);
+                          _lookupCodeAndAdd(query);
                         } else if (selectedSearchIndex >= 0 &&
                             selectedSearchIndex < searchResults.length) {
-                          _selectSearchItem(searchResults[selectedSearchIndex]);
+                          _selectSearchItem(
+                              searchResults[selectedSearchIndex]);
+                        } else if (searchResults.length == 1) {
+                          _selectSearchItem(searchResults.first);
+                        } else if (searchResults.isNotEmpty) {
+                          _selectSearchItem(searchResults.first);
+                        } else {
+                          performSearch(query);
                         }
                       },
                       onClear: () {
+                        _searchDebounce?.cancel();
                         searchController.clear();
                         performSearch("");
                       },
@@ -2241,19 +2524,32 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                       selectedSearchIndex: selectedSearchIndex,
                       searchResultsCount: searchResults.length,
                       onArrowDown: () {
+                        if (searchResults.isEmpty) return;
                         setState(() {
-                          if (selectedSearchIndex < searchResults.length - 1) {
+                          if (selectedSearchIndex < 0) {
+                            selectedSearchIndex = 0;
+                          } else if (selectedSearchIndex <
+                              searchResults.length - 1) {
                             selectedSearchIndex++;
                           }
                         });
                       },
                       onArrowUp: () {
+                        if (searchResults.isEmpty) return;
                         setState(() {
-                          if (selectedSearchIndex > 0) selectedSearchIndex--;
+                          if (selectedSearchIndex > 0) {
+                            selectedSearchIndex--;
+                          } else {
+                            selectedSearchIndex = 0;
+                          }
                         });
                       },
                       onEnterSelect: () {
-                        _selectSearchItem(searchResults[selectedSearchIndex]);
+                        if (selectedSearchIndex >= 0 &&
+                            selectedSearchIndex < searchResults.length) {
+                          _selectSearchItem(
+                              searchResults[selectedSearchIndex]);
+                        }
                       },
                     ),
                   ),
@@ -2323,10 +2619,7 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                         : null,
                     onNoSale: () {},
                     onOrderList: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => OrderList()),
-                      );
+                      showJobListDialog(context);
                     },
                     onQtyCommit: _commitQty,
                     onReturn1: canUseReturnBill
@@ -2395,8 +2688,21 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                             }
                           }
                         : () {},
-                    onReceipts: () {},
+                    onReceipts: () => showCreditSettlementDialog(context),
                     onAppointments: _openAppointmentsDialog,
+                    onSelectTable: canUseTables
+                        ? () async {
+                            final result = await showDialog<TableSeatSelection>(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const TableSelectionDialog(),
+                            );
+
+                            if (result != null) {
+                              // TODO: use result.areaId/tableId/seatNo
+                            }
+                          }
+                        : null,
                     onSettlement: widget.isBaseVersion && canUseSettlement
                         ? () {
                             _performSettlement();

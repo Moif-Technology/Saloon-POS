@@ -12,6 +12,7 @@ import 'package:my_app/widgets/topPanelWidgets/ReportTab/areawise_reportsummary.
 import 'package:my_app/widgets/topPanelWidgets/ReportTab/reportViewer.dart';
 import 'package:my_app/widgets/topPanelWidgets/ReportTab/salesVatReport.dart';
 import 'package:my_app/widgets/topPanelWidgets/top_panel_widgets_imports.dart';
+import 'package:my_app/widgets/rightPanelWidgets/credit_settlement_dialog.dart';
 import 'package:my_app/utils/sessionStorage.dart';
 import 'package:my_app/widgets/brand_logo.dart';
 import 'package:window_manager/window_manager.dart';
@@ -194,9 +195,9 @@ class TopBar extends ConsumerWidget {
       "Sales Bill Wise": () => SalesBillWiseReport(),
       "Day Wise": () => DayWise(),
       "Advance Payment": () => AdvancePaymentDialog(),
-      "Credit Payment Reciept": () => CustomerLookupDialog(),
+      "Credit Payment Reciept": () => const CreditSettlementDialog(),
       "Payment List": () => PaymentList(),
-      "OS Balance List": () => OutstandingBillsDialog(),
+      "OS Balance List": () => const OutstandingBillsDialog(),
       "Reciept List": () => ReceiptListDialog(),
       "Advance Viewer": () => AdvanceViewer(),
       "Mess Bill Viewer": () => MessBillViewer(),

@@ -50,7 +50,7 @@ class DirectSettlement extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildInfoRow(context, "Area:", "DINE IN", "Table:", "1", pad, fs),
-            _buildInfoRow(context, "KOT No:", "-", "Bill No:", "-", pad, fs),
+            _buildInfoRow(context, "Job No:", "-", "Bill No:", "-", pad, fs),
             SizedBox(height: pad),
             _buildTableSection(context, pad, fs),
             SizedBox(height: pad),
@@ -272,7 +272,7 @@ class DirectSettlement extends StatelessWidget {
   }
 
   Widget _buildRightButtons(BuildContext context, double pad, double fs) {
-    final btns = [("New Bill", _themeColor), ("Bill Join", _themeColor), ("Print KOT", _themeColor), ("Duplicate Bill", Colors.orange), ("Bill", Colors.green)];
+    final btns = [("New Bill", _themeColor), ("Bill Join", _themeColor), ("Print Job", _themeColor), ("Duplicate Bill", Colors.orange), ("Bill", Colors.green)];
     return Column(
       children: btns.map((b) {
         return Padding(

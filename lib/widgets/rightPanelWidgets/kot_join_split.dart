@@ -139,7 +139,7 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
       children: [
         Expanded(
           child: _buildDraggableKOTList(
-            "KOT 1",
+            "Job 1",
             joinKotList1,
             (item) => _moveItem(item, joinKotList2, joinKotList1),
           ),
@@ -147,7 +147,7 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
         const SizedBox(width: 16),
         Expanded(
           child: _buildDraggableKOTList(
-            "KOT 2",
+            "Job 2",
             joinKotList2,
             (item) => _moveItem(item, joinKotList1, joinKotList2),
           ),
@@ -189,13 +189,13 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
       children: [
         Expanded(
           flex: 1,
-          child: _buildKOTListing("KOT Listing", splitKotList),
+          child: _buildKOTListing("Job Listing", splitKotList),
         ),
         const SizedBox(width: 16),
         Expanded(
           flex: 2,
           child: _buildTable(
-            "KOT Items",
+            "Job Items",
             splitSourceItems,
             splitSourceTotal,
             isSplitMode: true,
@@ -495,7 +495,7 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
 
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('KOT split saved in mock mode.'),
+                  content: Text('Job split saved in mock mode.'),
                   backgroundColor: Colors.green,
                 ),
               );
@@ -503,7 +503,7 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
             }
           },
           child: Text(
-            mode == "Join" ? "Save Joined KOT" : "Save Split KOT",
+            mode == "Join" ? "Save Joined Job" : "Save Split Job",
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -569,14 +569,14 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
     if (joinKotList2.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text("Please select at least one KOT to join.")),
+            content: Text("Please select at least one job to join.")),
       );
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('KOT join saved in mock mode.'),
+        content: Text('Job join saved in mock mode.'),
         backgroundColor: Colors.green,
       ),
     );
@@ -590,7 +590,7 @@ class _BillJoinSplitDialogState extends State<BillJoinSplitDialog> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text("Cannot Split"),
-          content: const Text("A KOT with only one item cannot be split."),
+          content: const Text("A job with only one item cannot be split."),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),

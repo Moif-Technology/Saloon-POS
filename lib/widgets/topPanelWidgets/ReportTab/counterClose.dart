@@ -2,13 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_app/core/providers/counter_close_provider.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
+import 'package:my_app/services/api_service.dart';
+import 'package:my_app/services/counter_close_mapper.dart';
 import 'package:my_app/widgets/topPanelWidgets/ReportTab/printDialog.dart';
 import 'package:my_app/utils/sessionManager.dart';
 
 class CounterCloseDialog extends ConsumerStatefulWidget {
   final String? selectedStaffId;
+  /// When true: all pending on this counter (no cashier filter). Same UI.
+  final bool isAdmin;
 
-  const CounterCloseDialog({Key? key, this.selectedStaffId}) : super(key: key);
+  const CounterCloseDialog({
+    Key? key,
+    this.selectedStaffId,
+    this.isAdmin = false,
+  }) : super(key: key);
   @override
   _CounterCloseDialogState createState() => _CounterCloseDialogState();
 }
@@ -25,6 +33,7 @@ class _CounterCloseDialogState extends ConsumerState<CounterCloseDialog> {
   // Store values
   double cashToBeCollected = 0.0;
   double cashDifference = 0.0;
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -90,9 +99,76 @@ class _CounterCloseDialogState extends ConsumerState<CounterCloseDialog> {
     });
   }
 
+  Future<void> _runReport(String type) async {
+    if (_submitting) return;
+    final isZ = type == 'Z-Report';
+    final collected =
+        double.tryParse(collectedAmountController.text.trim()) ?? 0.0;
+    if (isZ && collected <= 0) {
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Missing Value'),
+          content: const Text(
+              'Please enter the Collected Amount before closing.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final result = await ApiService().closeCounter(
+        reportType: isZ ? 'Z' : 'X',
+        collectedCash: collected,
+        allStaff: widget.isAdmin,
+      );
+      final mapped = mapCounterCloseForUi(
+        result,
+        session: SessionManager(),
+        collectedOverride: collected,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PrintPage(
+            Type: type,
+            collectedAmount: collected,
+            cashDifference: counterCloseNum(mapped['CashDifference']),
+            selectedStaffId: widget.selectedStaffId,
+            reportData: mapped,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      ref.invalidate(counterCloseProvider(
+          widget.isAdmin ? 'admin' : (widget.selectedStaffId ?? 'null')));
+      if (isZ) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$type failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final staffOrReportType = widget.selectedStaffId ?? "null";
+    final staffOrReportType =
+        widget.isAdmin ? 'admin' : (widget.selectedStaffId ?? "null");
     final counterCloseData = ref.watch(counterCloseProvider(staffOrReportType));
 
     final currencyPrecession = ref.watch(currencyPrecessionProvider) ?? "0.00";
@@ -173,7 +249,9 @@ final counterNo = _resolveDisplayValue(
                             const SizedBox(width: 12),
                             Flexible(
                               child: Text(
-                                'Counter Close',
+                                widget.isAdmin
+                                    ? 'Counter Close - Admin'
+                                    : 'Counter Close',
                                 style: TextStyle(
                                   fontSize: baseFontSize + 4,
                                   fontWeight: FontWeight.w700,
@@ -190,7 +268,8 @@ final counterNo = _resolveDisplayValue(
                       const SizedBox(width: 12),
                       // Directly left of Close: Cashier | Counter
                       Text(
-                        'Cashier: $cashierName  |  Counter: $counterNo',
+                        'Cashier: $cashierName  |  Counter: $counterNo'
+                        '${widget.isAdmin ? '  |  ADMIN (all pending)' : ''}',
                         style: TextStyle(
                           fontSize: baseFontSize - 2,
                           fontWeight: FontWeight.w600,
@@ -614,18 +693,7 @@ final counterNo = _resolveDisplayValue(
       child: Row(
         children: [
           OutlinedButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => PrintPage(
-                    Type: 'X-Report',
-                    collectedAmount: 0.0,
-                    cashDifference: 0.0,
-                    selectedStaffId: widget.selectedStaffId,
-                  ),
-                ),
-              );
-            },
+            onPressed: _submitting ? null : () => _runReport('X-Report'),
             style: OutlinedButton.styleFrom(
               foregroundColor: primaryColor,
               side: const BorderSide(
@@ -640,7 +708,7 @@ final counterNo = _resolveDisplayValue(
               ),
             ),
             child: Text(
-              'X-Report',
+              _submitting ? '…' : 'X-Report',
               style: TextStyle(
                 fontSize: baseFontSize - 1,
                 fontWeight: FontWeight.w600,
@@ -650,39 +718,7 @@ final counterNo = _resolveDisplayValue(
           ),
           const Spacer(),
           ElevatedButton(
-            onPressed: () {
-              final collected = double.tryParse(
-                      collectedAmountController.text) ??
-                  0.0;
-              if (collected <= 0.0) {
-                showDialog(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text("⚠️ Missing Value"),
-                    content: const Text(
-                        "Please enter the Collected Amount before closing."),
-                    actions: [
-                      TextButton(
-                        onPressed: () =>
-                            Navigator.of(context).pop(),
-                        child: const Text("OK"),
-                      ),
-                    ],
-                  ),
-                );
-              } else {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PrintPage(
-                      Type: 'Z-Report',
-                      collectedAmount: collected,
-                      cashDifference: cashDifference,
-                      selectedStaffId: widget.selectedStaffId,
-                    ),
-                  ),
-                );
-              }
-            },
+            onPressed: _submitting ? null : () => _runReport('Z-Report'),
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryColor,
               foregroundColor: Colors.white,
@@ -697,7 +733,7 @@ final counterNo = _resolveDisplayValue(
               ),
             ),
             child: Text(
-              'Z-Report',
+              _submitting ? 'Saving…' : 'Z-Report',
               style: TextStyle(
                 fontSize: baseFontSize,
                 fontWeight: FontWeight.w700,

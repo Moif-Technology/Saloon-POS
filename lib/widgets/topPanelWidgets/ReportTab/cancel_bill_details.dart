@@ -114,7 +114,7 @@ class CancelBillReportDialog extends StatelessWidget {
                             columns: [
                               DataColumn(
                                 label: Text(
-                                  'Kot',
+                                  'Job',
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                               ),
@@ -134,7 +134,7 @@ class CancelBillReportDialog extends StatelessWidget {
                             rows: List.generate(10, (index) {
                               return DataRow(
                                 cells: [
-                                  DataCell(Text('KOT${index + 1}')),
+                                  DataCell(Text('Job${index + 1}')),
                                   DataCell(Text('Cashier ${index + 1}')),
                                   DataCell(Text('Waiter ${index + 1}')),
                                 ],

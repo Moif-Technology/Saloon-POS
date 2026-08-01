@@ -560,9 +560,16 @@ class MockApiService implements ApiService {
   }
 
   @override
-  Future<List<dynamic>> fetchProducts(
-      {String? groupId, String? subGroupId}) async {
-    await Future.delayed(const Duration(milliseconds: 500));
+  @override
+  Future<List<dynamic>> fetchProducts({
+    String? groupId,
+    String? subGroupId,
+    String? search,
+    String? barcode,
+    String? productCode,
+    int? limit,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 200));
     final all = <Map<String, dynamic>>[
       {
         'ProductID': '1',
@@ -859,6 +866,31 @@ class MockApiService implements ApiService {
     if (subGroupId != null && subGroupId.isNotEmpty) {
       filtered = filtered.where((p) => p['SubGroupID'] == subGroupId).toList();
     }
+    if (barcode != null && barcode.trim().isNotEmpty) {
+      final b = barcode.trim();
+      filtered = filtered.where((p) => (p['Barcode'] ?? '') == b).toList();
+    }
+    if (productCode != null && productCode.trim().isNotEmpty) {
+      final c = productCode.trim().toLowerCase();
+      filtered = filtered
+          .where((p) => (p['ProductCode'] ?? '').toString().toLowerCase() == c)
+          .toList();
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      final q = search.trim().toLowerCase();
+      filtered = filtered.where((p) {
+        final name = (p['ShortDescription'] ?? p['ProductName'] ?? '')
+            .toString()
+            .toLowerCase();
+        final code = (p['ProductCode'] ?? '').toString().toLowerCase();
+        final bar = (p['Barcode'] ?? '').toString().toLowerCase();
+        return name.contains(q) || code.contains(q) || bar.contains(q);
+      }).toList();
+    }
+    final cap = limit ?? 200;
+    if (filtered.length > cap) {
+      filtered = filtered.take(cap).toList();
+    }
     return filtered;
   }
 
@@ -1128,6 +1160,27 @@ class MockApiService implements ApiService {
       'customerName': name,
       'message': 'Customer updated',
     };
+  }
+
+  @override
+  Future<Map<String, dynamic>> verifySupervisor({
+    required String username,
+    required String password,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final u = username.trim().toLowerCase();
+    if ((u == 'admin' || u == 'supervisor' || u == 'manager') &&
+        password.isNotEmpty) {
+      return {
+        'ok': true,
+        'staffId': 1,
+        'staffName': username.trim(),
+        'roleId': 1,
+        'roleName': 'Admin',
+        'message': 'Approved',
+      };
+    }
+    throw Exception('Invalid supervisor credentials');
   }
 
   @override
@@ -1480,8 +1533,15 @@ class MockApiService implements ApiService {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchOrderList(
-      {String? areaId, String? search}) async {
+  Future<List<Map<String, dynamic>>> fetchOrderList({
+    String? areaId,
+    String? search,
+    String? jobNo,
+    String? customerName,
+    String? mobile,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final rows = <Map<String, dynamic>>[
       {
@@ -1491,10 +1551,12 @@ class MockApiService implements ApiService {
         'KotNumber': 'SJ-001',
         'ChairName': 'Chair 3',
         'CustomerName': 'Ahmed Ali',
+        'MobileNo': '0501234567',
         'PrimaryStylistName': 'Ahmed',
         'Amount': '145.00',
         'JobStatus': 'OPEN',
-        'StartTime': '2026-06-16T12:30:00',
+        'StartTime': '2026-07-30T12:30:00',
+        'JobDate': '2026-07-30',
       },
       {
         'JobID': '2',
@@ -1503,10 +1565,12 @@ class MockApiService implements ApiService {
         'KotNumber': 'SJ-002',
         'ChairName': 'Chair 1',
         'CustomerName': 'Sara Khan',
+        'MobileNo': '0559876543',
         'PrimaryStylistName': 'John',
         'Amount': '320.00',
         'JobStatus': 'OPEN',
-        'StartTime': '2026-06-16T13:00:00',
+        'StartTime': '2026-07-31T13:00:00',
+        'JobDate': '2026-07-31',
       },
       {
         'JobID': '3',
@@ -1515,10 +1579,12 @@ class MockApiService implements ApiService {
         'KotNumber': 'SJ-003',
         'ChairName': 'Walk-in',
         'CustomerName': 'Omar Hassan',
+        'MobileNo': '0521112233',
         'PrimaryStylistName': 'Fatima',
         'Amount': '78.50',
         'JobStatus': 'OPEN',
-        'StartTime': '2026-06-16T13:30:00',
+        'StartTime': '2026-07-31T13:30:00',
+        'JobDate': '2026-07-31',
       },
       ..._openKots.values.map((kot) => {
             'JobID': kot['kotMasterId'],
@@ -1527,17 +1593,64 @@ class MockApiService implements ApiService {
             'KotNumber': kot['kotNumber'],
             'ChairName': kot['tableName'],
             'CustomerName': kot['customerName'],
+            'MobileNo': kot['mobileNo'] ?? '',
             'PrimaryStylistName': kot['staffName'],
             'Amount': '${kot['totalAmount']}',
             'JobStatus': kot['status'],
             'StartTime': kot['createdAt'],
+            'JobDate': (kot['createdAt'] ?? '').toString().split('T').first,
             'AreaName': kot['areaName'],
           }),
     ];
     return rows.where((row) {
       final q = search?.trim().toLowerCase() ?? '';
-      if (q.isEmpty) return true;
-      return row.values.any((v) => v.toString().toLowerCase().contains(q));
+      if (q.isNotEmpty) {
+        final hay = [
+          row['JobNo'],
+          row['CustomerName'],
+          row['MobileNo'],
+        ].map((v) => v?.toString().toLowerCase() ?? '').join(' ');
+        if (!hay.contains(q)) return false;
+      }
+      final jn = jobNo?.trim().toLowerCase() ?? '';
+      if (jn.isNotEmpty &&
+          !(row['JobNo']?.toString().toLowerCase().contains(jn) ?? false)) {
+        return false;
+      }
+      final cn = customerName?.trim().toLowerCase() ?? '';
+      if (cn.isNotEmpty &&
+          !(row['CustomerName']?.toString().toLowerCase().contains(cn) ??
+              false)) {
+        return false;
+      }
+      final mob = mobile?.trim().replaceAll(RegExp(r'[\s\-()]'), '') ?? '';
+      if (mob.isNotEmpty) {
+        final rowMob = (row['MobileNo'] ?? '')
+            .toString()
+            .replaceAll(RegExp(r'[\s\-()]'), '')
+            .toLowerCase();
+        if (!rowMob.contains(mob.toLowerCase())) return false;
+      }
+      DateTime? parseJobDate(Map<String, dynamic> r) {
+        final d = (r['JobDate'] ?? r['StartTime'] ?? '').toString();
+        if (d.isEmpty) return null;
+        try {
+          return DateTime.parse(d.length >= 10 ? d.substring(0, 10) : d);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      final jobDate = parseJobDate(row);
+      if (dateFrom != null && dateFrom.isNotEmpty && jobDate != null) {
+        final from = DateTime.tryParse(dateFrom);
+        if (from != null && jobDate.isBefore(from)) return false;
+      }
+      if (dateTo != null && dateTo.isNotEmpty && jobDate != null) {
+        final to = DateTime.tryParse(dateTo);
+        if (to != null && jobDate.isAfter(to)) return false;
+      }
+      return true;
     }).toList();
   }
 
@@ -1586,17 +1699,27 @@ class MockApiService implements ApiService {
     final kotId = (payload['kotMasterId'] ??
             payload['kotMasterID'] ??
             payload['KOTMasterID'] ??
+            payload['jobId'] ??
+            payload['JobID'] ??
             payload['orderData']?['kotMasterId'] ??
             '')
         .toString();
     if (kotId.isNotEmpty) _openKots.remove(kotId);
     final saleNo = _nextSaleNo++;
+    final mode = (payload['paymentMode'] ?? 'CASH').toString();
     return {
       'ok': true,
-      'billNo': 'S-2026-${saleNo.toString().padLeft(4, '0')}',
-      'salesId': 'SL-${saleNo.toString().padLeft(3, '0')}',
-      'message': 'Settlement completed',
-      'changeAmount': 15.50,
+      'billNo': '$saleNo',
+      'salesId': '$saleNo',
+      'jobNo': (payload['jobNo'] ??
+              payload['JobNo'] ??
+              payload['kotNumber'] ??
+              'SJ-$saleNo')
+          .toString(),
+      'paymentMode': mode,
+      'balancePaid': '0',
+      'outstandingBalance': mode == 'CREDIT' ? '${payload['netAmount'] ?? 0}' : '0',
+      'message': 'Settlement completed. Job cleared.',
     };
   }
 
@@ -1661,5 +1784,213 @@ class MockApiService implements ApiService {
   Future<Map<String, dynamic>> getStylistAvailability(int stylistId, String date) {
     // TODO: implement getStylistAvailability
     throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchCreditSettlementCustomers({
+    String? search,
+    int limit = 200,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final q = search?.trim().toLowerCase() ?? '';
+    final rows = [
+      {
+        'customerId': 10,
+        'customerCode': 'C-010',
+        'customerName': 'Credit Walk-in Co',
+        'paymentMode': 'CREDIT',
+        'osAmount': 250.0,
+      },
+      {
+        'customerId': 11,
+        'customerCode': 'C-011',
+        'customerName': 'Sara Accounts',
+        'paymentMode': 'CREDIT',
+        'osAmount': 80.5,
+      },
+    ];
+    if (q.isEmpty) return rows;
+    return rows
+        .where((r) =>
+            r.values.any((v) => v.toString().toLowerCase().contains(q)))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchCustomerOutstandingBills(
+      String customerId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return {
+      'customerId': int.tryParse(customerId) ?? 0,
+      'customerCode': 'C-$customerId',
+      'customerName': 'Credit Customer',
+      'ledgerOs': 250.0,
+      'billsTotal': 250.0,
+      'osAmount': 250.0,
+      'bills': [
+        {
+          'billId': 101,
+          'invoiceNo': 'B-101',
+          'billDate': '2026-07-28',
+          'invoiceAmount': 150.0,
+          'currentAmount': 150.0,
+        },
+        {
+          'billId': 102,
+          'invoiceNo': 'B-102',
+          'billDate': '2026-07-30',
+          'invoiceAmount': 100.0,
+          'currentAmount': 100.0,
+        },
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> saveCreditSettlement({
+    required dynamic customerId,
+    required double amount,
+    required String paymentMode,
+    int counterNo = 1,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    return {
+      'transactionId': 1,
+      'transactionNo': 1,
+      'receiptNo': 'RCV-1',
+      'customerId': customerId,
+      'amount': amount,
+      'paymentMode': paymentMode,
+      'osBefore': 250.0,
+      'osAfter': 250.0 - amount,
+      'remainingOs': 250.0 - amount,
+      'billsCleared': [],
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchCreditSettlementHistory({
+    String? customerId,
+    String? dateFrom,
+    String? dateTo,
+    int limit = 150,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return [
+      {
+        'transactionId': 1,
+        'receiptNo': 'RCV-1',
+        'customerName': 'Credit Walk-in Co',
+        'transactionDate': '2026-07-30',
+        'paidAmount': 100.0,
+        'osAfter': 150.0,
+      },
+    ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchCreditSettlementReceipt(
+      String transactionId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    return {
+      'transactionId': transactionId,
+      'receiptNo': 'RCV-$transactionId',
+      'paidAmount': 100.0,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchCounterSummary({
+    int? counterNo,
+    bool allStaff = false,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 80));
+    return {
+      'totalCash': allStaff ? 250.0 : 100.0,
+      'totalCredit': 20.0,
+      'totalCard': 50.0,
+      'totalOnline': 10.0,
+      'totalVoucher': 0.0,
+      'totalDiscount': 5.0,
+      'itemDiscountTotal': 0.0,
+      'totalRefund': 0.0,
+      'totalRoundOff': 0.0,
+      'totalTax': 8.0,
+      'grossAmount': allStaff ? 330.0 : 180.0,
+      'cashIn': 0.0,
+      'cashOut': 0.0,
+      'creditReceiptCash': 0.0,
+      'creditReceiptCard': 0.0,
+      'creditReceiptCount': 0,
+      'cashToBeCollected': allStaff ? 250.0 : 100.0,
+      'billCount': allStaff ? 7 : 3,
+      'cashBillCount': allStaff ? 3 : 1,
+      'creditBillCount': 1,
+      'cardBillCount': 1,
+      'multiBillCount': 0,
+      'complimentBillCount': 0,
+      'startBillNo': 1001,
+      'endBillNo': allStaff ? 1007 : 1003,
+      'cashInOutList': <Map<String, dynamic>>[],
+      'allStaff': allStaff,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> closeCounter({
+    required String reportType,
+    required double collectedCash,
+    int? counterNo,
+    bool allStaff = false,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    final summary =
+        await fetchCounterSummary(counterNo: counterNo, allStaff: allStaff);
+    final toCollect = (summary['cashToBeCollected'] as num).toDouble();
+    final out = {
+      ...summary,
+      'reportType': reportType.toUpperCase(),
+      'collectedCash': collectedCash,
+      'cashDifference': collectedCash - toCollect,
+    };
+    if (reportType.toUpperCase() == 'Z') {
+      out['closeId'] = 1;
+      out['closeNo'] = 'Z-C${counterNo ?? 1}-0001';
+      out['billsClosed'] = summary['billCount'];
+    }
+    return out;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchCounterCloseHistory({
+    int? counterNo,
+    String? dateFrom,
+    String? dateTo,
+    int limit = 100,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 80));
+    return [
+      {
+        'closeId': 1,
+        'closeNo': 'Z-C${counterNo ?? 1}-0001',
+        'reportType': 'Z',
+        'closeDate': DateTime.now().toIso8601String(),
+        'counterNo': counterNo ?? 1,
+        'staffName': 'Mock Cashier',
+        'totalCash': 100.0,
+        'totalCredit': 20.0,
+        'totalCard': 50.0,
+        'cashToBeCollected': 100.0,
+        'collectedCash': 100.0,
+        'cashDifference': 0.0,
+        'billCount': 3,
+      },
+    ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchCounterCloseDetail(String closeId) async {
+    final list = await fetchCounterCloseHistory();
+    return list.first;
   }
 }

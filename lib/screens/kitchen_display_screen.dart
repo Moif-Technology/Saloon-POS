@@ -20,7 +20,7 @@ class _BlinkingKDSState extends State<BlinkingKDS>
     final now = DateTime.now();
     orders = [
       {
-        'kot': 'KOT-101',
+        'kot': 'JOB-101',
         'status': 'New',
         'type': 'Dine-In',
         'location': 'Table 1',
@@ -28,7 +28,7 @@ class _BlinkingKDSState extends State<BlinkingKDS>
         'items': ['Biryani', 'Raita', 'Salad', 'Water'],
       },
       {
-        'kot': 'KOT-102',
+        'kot': 'JOB-102',
         'status': 'Preparing',
         'type': 'Takeaway',
         'location': 'Token 5',
@@ -36,7 +36,7 @@ class _BlinkingKDSState extends State<BlinkingKDS>
         'items': ['Burger', 'Fries'],
       },
       {
-        'kot': 'KOT-103',
+        'kot': 'JOB-103',
         'status': 'New',
         'type': 'Delivery',
         'location': 'Zone A',

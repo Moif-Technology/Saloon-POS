@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:my_app/services/api_service.dart';
+import 'package:my_app/services/counter_close_mapper.dart';
+import 'package:my_app/utils/sessionManager.dart';
+import 'package:my_app/widgets/topPanelWidgets/ReportTab/printDialog.dart';
 
 class CounterCloseReportPage extends StatefulWidget {
   @override
@@ -39,9 +43,8 @@ class _CounterCloseReportPageState extends State<CounterCloseReportPage> {
 
   Future<void> _loadStaffList() async {
     try {
-      final data = <Map<String, dynamic>>[];
       setState(() {
-        _staffList = data;
+        _staffList = [];
       });
     } catch (e) {
       print('Error loading staff list: $e');
@@ -52,11 +55,21 @@ class _CounterCloseReportPageState extends State<CounterCloseReportPage> {
     setState(() => _isLoading = true);
 
     try {
-      final data = <Map<String, dynamic>>[];
+      final counterNo =
+          int.tryParse(_counterNoController.text.trim()) ??
+              int.tryParse(SessionManager().stationId ?? '') ??
+              1;
+      final rows = await ApiService().fetchCounterCloseHistory(
+        counterNo: counterNo,
+        dateFrom: _fromDateController.text.trim(),
+        dateTo: _toDateController.text.trim(),
+      );
+      final data = rows.map(mapCounterCloseHistoryRow).toList();
 
       setState(() {
         _reportData = data;
         _isLoading = false;
+        _selectedReport = null;
       });
     } catch (e) {
       print('Error fetching counter close report: $e');
@@ -978,14 +991,39 @@ class _CounterCloseReportPageState extends State<CounterCloseReportPage> {
     );
   }
 
-  void _printReport(Map<String, dynamic> report) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Printing ${report['CounterCloseCode']}${report['CounterCloseNo']}...'),
-        backgroundColor: primaryColor,
-      ),
-    );
-    // TODO: Implement print functionality
+  Future<void> _printReport(Map<String, dynamic> report) async {
+    final closeId = (report['closeId'] ?? '').toString();
+    try {
+      Map<String, dynamic> detail = report;
+      if (closeId.isNotEmpty) {
+        detail = await ApiService().fetchCounterCloseDetail(closeId);
+      }
+      final mapped = mapCounterCloseForUi(
+        mapCounterCloseHistoryRow({...report, ...detail}),
+        session: SessionManager(),
+        collectedOverride: counterCloseNum(
+            detail['collectedCash'] ?? report['CollectedAmount']),
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PrintPage(
+            Type: 'Z-Report',
+            collectedAmount: counterCloseNum(mapped['CollectedAmount']),
+            cashDifference: counterCloseNum(mapped['CashDifference']),
+            reportData: mapped,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Print failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildCashierDropdown() {

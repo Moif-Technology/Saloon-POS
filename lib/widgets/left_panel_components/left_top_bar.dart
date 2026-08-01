@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Left panel top bar: KOT label + customer dropdown + add customer.
+/// Left panel top bar: Job label + customer dropdown + add customer.
 /// API unchanged for [PosLeftPanel].
 class LeftTopBar extends StatelessWidget {
   final bool isKOTActive;
@@ -157,7 +157,7 @@ class _KotSection extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'KOT ',
+          'Job ',
           style: TextStyle(
             fontSize: fontSize - 1,
             color: Colors.grey.shade600,

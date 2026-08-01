@@ -427,7 +427,7 @@ class _TableSelectionDialogState extends State<TableSelectionDialog> {
       ));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to open KOT: $e')),
+        SnackBar(content: Text('Failed to open job: $e')),
       );
     }
   }
@@ -1811,7 +1811,7 @@ class _SidePanel extends StatelessWidget {
                     const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               onPressed: onOpenKot,
-              label: const Text('Open KOT'),
+              label: const Text('Open Job'),
             ),
           ]),
         ] else ...[

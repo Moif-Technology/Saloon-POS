@@ -190,7 +190,7 @@ Map<String, dynamic>? _selectedBillDetails;
   Future<void> _printKOT() async {
     if (_selectedKotId == null || _selectedKotId == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No KOT available')),
+        const SnackBar(content: Text('No job available')),
       );
       return;
     }
@@ -199,12 +199,12 @@ Map<String, dynamic>? _selectedBillDetails;
       await emptyKotDetails();
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('KOT reprint - Coming soon')),
+        const SnackBar(content: Text('Job reprint - Coming soon')),
       );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('KOT print failed: $e')),
+          SnackBar(content: Text('Job print failed: $e')),
         );
       }
     }
@@ -517,7 +517,7 @@ Map<String, dynamic>? _selectedBillDetails;
                   ),
                   const SizedBox(width: 12),
                   _buildModernButton(
-                    'Print KOT',
+                    'Print Job',
                     Icons.restaurant_menu_rounded,
                     _selectedKotId == null || _selectedKotId == 0 ? null : _printKOT,
                   ),
