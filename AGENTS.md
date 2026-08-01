@@ -36,10 +36,12 @@ All UI flags are `pos.<feature>` string codes defined in `lib/entitlements/pos_f
 
 ## Printing architecture
 
-- **Windows native GDI** (default): platform channel `com.myapp/native_settlement_print` → C++ code. Enabled via `useWindowsNativeSettlementPrint`, `useWindowsNativeSalesReceiptPrint`, `useWindowsNativeKOTPrint` flags.
-- **Thermal ESC/POS**: `SettlementReceiptPrinter` / `sales_viewer_receipt.dart` using `thermal_printer` (network IP + port 9100, or USB with name containing "counter").
+- **Windows native GDI** (default on Windows): platform channel `com.myapp/native_settlement_print` → C++ code. Enabled via `useWindowsNativeSettlementPrint`, `useWindowsNativeSalesReceiptPrint`, `useWindowsNativeKOTPrint` flags.
+- **Android** (Sunmi + thermal): `PosPrint` → `AndroidEscPosSender`. Prefers Sunmi built-in (`sunmi_printer_plus`), then network IP (`receiptPrinterIP:9100`), then USB whose name contains `counter` / `innerprinter` / `sunmi`. Flags: `useAndroidPrinting`, `preferSunmiBuiltInPrinter`.
+- **Thermal ESC/POS** (shared builders): `SettlementReceiptPrinter` / `KotReceiptPrinter` using `thermal_printer` for non-Sunmi Android and legacy USB/network.
 - **Web**: `dart:html` via `receipt_printer_web_impl.dart`.
 - Printer names go in `settlementPrintPrinterNameWindows` / `kotPrintPrinterNameWindows`.
+- Call sites should use `lib/services/printService/pos_print.dart` (`PosPrint.printSettlement` / `printSalesReceipt` / `printKOT`).
 
 ## Session
 

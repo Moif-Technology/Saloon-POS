@@ -1,18 +1,12 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_app/core/providers/providers.dart';
 import 'package:my_app/entitlements/pos_features.dart';
 import 'package:my_app/services/api_service.dart';
-import 'package:my_app/config/api_config.dart';
-import 'package:my_app/services/printService/windows_native_settlement_printer.dart';
-import 'package:my_app/services/printService/windows_native_kot_printer.dart';
-import 'package:my_app/services/printService/web/receipt_printer.dart'
-    as web_print;
+import 'package:my_app/services/printService/pos_print.dart';
 import 'package:my_app/utils/privilege_utils.dart';
 import 'package:my_app/utils/kot_reset_utils.dart';
 import 'package:my_app/widgets/rightPanelWidgets/item_cancel.dart';
@@ -1398,22 +1392,13 @@ class _RightPanelState extends ConsumerState<RightPanel> {
         };
         final customerName =
             result['customerName']?.toString() ?? custName ?? 'Cash Customer';
-        if (kIsWeb) {
-          await web_print.printSettlementWeb(
-            result: result,
-            orderData: orderDataOut,
-            customerName: customerName,
-            currencyDecimals: currencyDecimals,
-          );
-        } else if (useWindowsNativeSettlementPrint && Platform.isWindows) {
-          WindowsNativeSettlementPrinter.printSettlement(
-            result: result,
-            orderData: orderDataOut,
-            customerName: customerName,
-            currencyDecimals: currencyDecimals,
-            onError: onError,
-          );
-        }
+        await PosPrint.printSettlement(
+          result: result,
+          orderData: orderDataOut,
+          customerName: customerName,
+          currencyDecimals: currencyDecimals,
+          onError: onError,
+        );
       }
       final container = ProviderScope.containerOf(context);
       clearKotStateForNewOrder(container);
@@ -1942,50 +1927,25 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                       final supplyType = isTakeAwayView
                           ? 'PARCEL'
                           : (isDeliveryListView ? 'DELIVERY' : 'DINE IN');
-                      if (kIsWeb) {
-                        await web_print.printKOTWeb(
-                          kotDetails: {'data': pending},
-                          supplyType: supplyType,
-                          title: 'JOB TICKET',
-                        );
-                        if (kotMasterId > 0) {
-                          try {
-                            final updated = await emptyKotDetails();
-                            ref.read(kotDetailsProvider.notifier).state =
-                                updated;
-                            ref.read(activeKotProvider.notifier).state =
-                                updated;
-                          } catch (e) {
-                            debugPrint('⚠️ markKotPrinted failed: $e');
+                      await PosPrint.printKOT(
+                        kotDetails: {'data': pending},
+                        supplyType: supplyType,
+                        title: 'JOB TICKET',
+                        onError: (m) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(SnackBar(content: Text(m)));
                           }
+                        },
+                      );
+                      if (kotMasterId > 0) {
+                        try {
+                          final updated = await emptyKotDetails();
+                          ref.read(kotDetailsProvider.notifier).state = updated;
+                          ref.read(activeKotProvider.notifier).state = updated;
+                        } catch (e) {
+                          debugPrint('⚠️ markKotPrinted failed: $e');
                         }
-                      } else if (WindowsNativeKOTPrinter.isAvailable) {
-                        await WindowsNativeKOTPrinter.printKOT(
-                          kotDetails: {'data': pending},
-                          supplyType: supplyType,
-                          title: 'JOB TICKET',
-                          onError: (m) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(SnackBar(content: Text(m)));
-                            }
-                          },
-                        );
-                        if (kotMasterId > 0) {
-                          try {
-                            final updated = await emptyKotDetails();
-                            ref.read(kotDetailsProvider.notifier).state =
-                                updated;
-                            ref.read(activeKotProvider.notifier).state =
-                                updated;
-                          } catch (e) {
-                            debugPrint('⚠️ markKotPrinted failed: $e');
-                          }
-                        }
-                      } else if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text(
-                                'Job print not available on this platform')));
                       }
                     },
                     onKotReprint: () {
@@ -2070,37 +2030,19 @@ class _RightPanelState extends ConsumerState<RightPanel> {
                                               : (isDeliveryListView
                                                   ? 'DELIVERY'
                                                   : 'DINE IN');
-                                          if (kIsWeb) {
-                                            debugPrint(
-                                                'KOT reprint: entering web_print.printKOTWeb');
-                                            await web_print.printKOTWeb(
-                                              kotDetails:
-                                                  kotD.isNotEmpty ? kotD : actD,
-                                              supplyType: supplyType,
-                                              title: 'Duplicate Job',
-                                            );
-                                          } else if (WindowsNativeKOTPrinter
-                                              .isAvailable) {
-                                            await WindowsNativeKOTPrinter
-                                                .printKOT(
-                                              kotDetails:
-                                                  kotD.isNotEmpty ? kotD : actD,
-                                              supplyType: supplyType,
-                                              title: 'Duplicate Job',
-                                              onError: (m) {
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(SnackBar(
-                                                          content: Text(m)));
-                                                }
-                                              },
-                                            );
-                                          } else if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(const SnackBar(
-                                                    content: Text(
-                                                        'Job print not available')));
-                                          }
+                                          await PosPrint.printKOT(
+                                            kotDetails:
+                                                kotD.isNotEmpty ? kotD : actD,
+                                            supplyType: supplyType,
+                                            title: 'Duplicate Job',
+                                            onError: (m) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(SnackBar(
+                                                        content: Text(m)));
+                                              }
+                                            },
+                                          );
                                         },
                                         style: ElevatedButton.styleFrom(
                                             backgroundColor:

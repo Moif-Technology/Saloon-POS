@@ -1,9 +1,8 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:my_app/utils/empty_kot_response.dart';
-import 'package:my_app/services/printService/windows_native_settlement_printer.dart';
+import 'package:my_app/services/printService/pos_print.dart';
 import 'package:my_app/utils/sessionManager.dart';
 
 class BillReprintDialog extends ConsumerStatefulWidget {
@@ -145,25 +144,17 @@ Map<String, dynamic>? _selectedBillDetails;
         throw Exception('Invalid receipt data');
       }
 
-      if (!kIsWeb) {
-        await WindowsNativeSettlementPrinter.printSalesReceipt(
-          receiptData: receiptData,
-          currencyDecimals: 2,
-          onError: (String message) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Print error: $message')),
-              );
-            }
-          },
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Native Windows receipt print is not available on web.'),
-          ),
-        );
-      }
+      await PosPrint.printSalesReceipt(
+        receiptData: receiptData,
+        currencyDecimals: 2,
+        onError: (String message) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Print error: $message')),
+            );
+          }
+        },
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

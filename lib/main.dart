@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -13,11 +14,23 @@ import 'package:my_app/screens/salon_auth_gate.dart';
 import 'package:my_app/screens/session_bootstrap_wrapper.dart';
 import 'package:my_app/core/update/update_gate.dart';
 
+bool get _isDesktopOs {
+  if (kIsWeb) return false;
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.windows:
+    case TargetPlatform.linux:
+    case TargetPlatform.macOS:
+      return true;
+    default:
+      return false;
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // WindowManager is desktop-only; on web it throws MissingPluginException.
-  if (!kIsWeb) {
+  // WindowManager is desktop-only (MissingPluginException on Android/iOS).
+  if (_isDesktopOs) {
     await WindowManager.instance.ensureInitialized();
   }
 
@@ -46,7 +59,7 @@ Future<void> main() async {
   // After the first frame, try to reclaim window focus from the IDE.
   // Hot restart on Windows lets the IDE steal focus; without this the
   // window appears full-screen but does not process user input.
-  if (!kIsWeb) {
+  if (_isDesktopOs) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _forceWindowFocus());
   }
 }
@@ -54,6 +67,7 @@ Future<void> main() async {
 /// Re-focuses the native window at staggered intervals to handle the
 /// race where the IDE reclaims focus immediately after hot restart.
 void _forceWindowFocus() {
+  if (!_isDesktopOs) return;
   _focusOnce();
   Future.delayed(const Duration(milliseconds: 200), _focusOnce);
   Future.delayed(const Duration(milliseconds: 500), _focusOnce);
@@ -61,10 +75,11 @@ void _forceWindowFocus() {
 }
 
 void _focusOnce() {
+  if (!_isDesktopOs) return;
   try {
     WindowManager.instance.focus();
   } catch (_) {
-    // window_manager not available (web / test)
+    // window_manager not available (mobile / web / test)
   }
 }
 
@@ -186,7 +201,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // When the app becomes active after hot restart (IDE released focus),
     // reclaim window focus so input events work again.
-    if (!kIsWeb && state == AppLifecycleState.resumed) {
+    if (_isDesktopOs && state == AppLifecycleState.resumed) {
       _focusOnce();
     }
   }

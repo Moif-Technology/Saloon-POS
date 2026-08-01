@@ -2,16 +2,21 @@ import 'dart:developer';
 
 import 'package:intl/intl.dart';
 import 'package:my_app/config/api_config.dart';
+import 'package:my_app/services/printService/android_escpos_sender.dart';
 import 'package:my_app/utils/sessionManager.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.dart';
 import 'package:thermal_printer/thermal_printer.dart';
 
 /// Settlement (counter) receipt — same layout and wording as VB HMS (GeneralModuleForm Print_printpage).
-/// Supports network (receiptPrinterIP) or USB printer whose name contains "counter".
+/// Android: Sunmi built-in → network IP → USB ("counter").
+/// Other platforms: network IP or USB printer whose name contains "counter".
 class SettlementReceiptPrinter {
   static bool _isCounterPrinter(String deviceName) {
     final n = deviceName.toString().trim().toLowerCase();
-    return n == 'counter' || n.contains('counter');
+    return n == 'counter' ||
+        n.contains('counter') ||
+        n.contains('innerprinter') ||
+        n.contains('sunmi');
   }
 
   static const int _discoverySeconds = 3;
@@ -34,71 +39,174 @@ class SettlementReceiptPrinter {
         currencyDecimals: currencyDecimals,
       );
 
-      final printerManager = PrinterManager.instance;
-      final ip = receiptPrinterIP.trim();
-
-      if (ip.isNotEmpty) {
-        final connected = await printerManager.connect(
-          type: PrinterType.network,
-          model: TcpPrinterInput(
-            ipAddress: ip,
-            port: receiptPrinterPort,
-            timeout: const Duration(seconds: 5),
-          ),
-        );
-        if (!connected) {
-          final msg = 'Could not connect to receipt printer at $ip:$receiptPrinterPort';
-          log(msg);
-          onError?.call(msg);
-          return;
-        }
-        await printerManager.send(type: PrinterType.network, bytes: bytes);
-        log('Settlement receipt sent to network printer $ip:$receiptPrinterPort');
+      if (AndroidEscPosSender.isEnabled) {
+        await AndroidEscPosSender.send(bytes, onError: onError);
         return;
       }
 
-      _PrinterDevice? selectedPrinter;
-      final sub = printerManager
-          .discovery(type: PrinterType.usb)
-          .listen((PrinterDevice device) {
-        final p = _PrinterDevice(
-          deviceName: device.name,
-          vendorId: device.vendorId,
-          productId: device.productId,
-          typePrinter: PrinterType.usb,
-        );
-        if (_isCounterPrinter(device.name.toString())) {
-          selectedPrinter ??= p;
-        }
-      });
-
-      await Future.delayed(Duration(seconds: _discoverySeconds));
-      sub.cancel();
-
-      final printer = selectedPrinter;
-      if (printer == null) {
-        final msg =
-            'Receipt printer "counter" not found. Set receiptPrinterIP in api_config for network printer.';
-        log(msg);
-        onError?.call(msg);
-        return;
-      }
-
-      await printerManager.connect(
-        type: printer.typePrinter,
-        model: UsbPrinterInput(
-          name: printer.deviceName,
-          productId: printer.productId,
-          vendorId: printer.vendorId,
-        ),
-      );
-
-      printerManager.send(type: PrinterType.usb, bytes: bytes);
-      log('Settlement receipt sent to USB ${printer.deviceName}');
+      await _sendViaThermalPrinter(bytes, onError: onError);
     } catch (e, st) {
       log('Settlement receipt print error: $e', stackTrace: st);
       onError?.call('Print failed: $e');
     }
+  }
+
+  /// Sales / bill reprint — converts {header, items} then prints like settlement.
+  static Future<void> printSalesReceipt({
+    required Map<String, dynamic> receiptData,
+    int currencyDecimals = 2,
+    void Function(String message)? onError,
+  }) async {
+    try {
+      final header = receiptData['header'] as Map<String, dynamic>? ?? {};
+      final items = List<Map<String, dynamic>>.from(
+          receiptData['items'] ?? receiptData['salesItems'] ?? []);
+
+      double parse(dynamic v) {
+        if (v == null) return 0.0;
+        if (v is num) return v.toDouble();
+        return double.tryParse(v.toString()) ?? 0.0;
+      }
+
+      final billNo = header['BillNo']?.toString() ?? '';
+      final paidAmount = parse(header['PaidAmount']);
+      final balancePaid = parse(header['BalancePaid']);
+      final paymentMode =
+          header['PaymentMode']?.toString().toUpperCase() ?? 'CASH';
+      final taxableAmount = parse(header['TaxableAmount']);
+      final tax1Amount = parse(header['Tax1AmountM']);
+      double netAmount = parse(header['Amount']);
+      if (netAmount == 0) {
+        for (final it in items) {
+          netAmount += parse(it['LineTotal']);
+        }
+      }
+      if (netAmount == 0) {
+        netAmount = taxableAmount + tax1Amount;
+      }
+      double tax1Rate = 0;
+      for (final it in items) {
+        final r = parse(it['Tax1RateC']);
+        if (r > 0) {
+          tax1Rate = r;
+          break;
+        }
+      }
+      if (tax1Rate == 0) tax1Rate = 5.0;
+
+      final orderData = <String, dynamic>{
+        'netAmount': netAmount,
+        'taxableAmount': taxableAmount,
+        'tax1Amount': tax1Amount,
+        'tax1RateM': tax1Rate,
+        'counterNo': header['CounterNo']?.toString() ?? '',
+        'kotPrefix': '',
+        'kotNumber': '',
+        'kotId': header['KOTNumber']?.toString() ?? '--',
+        'tableName': '-',
+        'waiterName': '-',
+        'cashierName': header['CashierName']?.toString() ?? 'CASHIER',
+        'comments': '0',
+        'customerName': header['CustomerName']?.toString() ?? 'Cash Customer',
+        'items': items.map((it) {
+          return {
+            'shortDescription': (it['ShortDescription'] ?? '-').toString(),
+            'qty': parse(it['Qty']),
+            'unitPrice': parse(it['UnitPrice']),
+            'subTotalC': parse(it['LineTotal']),
+            'tax1AmountC': parse(it['Tax1AmountC']),
+            'tax1RateC': parse(it['Tax1RateC']),
+          };
+        }).toList(),
+      };
+
+      final result = <String, dynamic>{
+        'billNo': billNo,
+        'paidAmount': paidAmount,
+        'balancePaid': balancePaid,
+        'paymentMode': paymentMode,
+      };
+
+      await printReceipt(
+        result: result,
+        orderData: orderData,
+        customerName:
+            header['CustomerName']?.toString() ?? 'Cash Customer',
+        currencyDecimals: currencyDecimals,
+        onError: onError,
+      );
+    } catch (e, st) {
+      log('Sales receipt ESC/POS print error: $e', stackTrace: st);
+      onError?.call('Print failed: $e');
+    }
+  }
+
+  static Future<void> _sendViaThermalPrinter(
+    List<int> bytes, {
+    void Function(String message)? onError,
+  }) async {
+    final printerManager = PrinterManager.instance;
+    final ip = receiptPrinterIP.trim();
+
+    if (ip.isNotEmpty) {
+      final connected = await printerManager.connect(
+        type: PrinterType.network,
+        model: TcpPrinterInput(
+          ipAddress: ip,
+          port: receiptPrinterPort,
+          timeout: const Duration(seconds: 5),
+        ),
+      );
+      if (!connected) {
+        final msg =
+            'Could not connect to receipt printer at $ip:$receiptPrinterPort';
+        log(msg);
+        onError?.call(msg);
+        return;
+      }
+      await printerManager.send(type: PrinterType.network, bytes: bytes);
+      log('Settlement receipt sent to network printer $ip:$receiptPrinterPort');
+      return;
+    }
+
+    _PrinterDevice? selectedPrinter;
+    final sub = printerManager
+        .discovery(type: PrinterType.usb)
+        .listen((PrinterDevice device) {
+      final p = _PrinterDevice(
+        deviceName: device.name,
+        vendorId: device.vendorId,
+        productId: device.productId,
+        typePrinter: PrinterType.usb,
+      );
+      if (_isCounterPrinter(device.name.toString())) {
+        selectedPrinter ??= p;
+      }
+    });
+
+    await Future.delayed(Duration(seconds: _discoverySeconds));
+    sub.cancel();
+
+    final printer = selectedPrinter;
+    if (printer == null) {
+      final msg =
+          'Receipt printer "counter" not found. Set receiptPrinterIP in api_config for network printer.';
+      log(msg);
+      onError?.call(msg);
+      return;
+    }
+
+    await printerManager.connect(
+      type: printer.typePrinter,
+      model: UsbPrinterInput(
+        name: printer.deviceName,
+        productId: printer.productId,
+        vendorId: printer.vendorId,
+      ),
+    );
+
+    printerManager.send(type: PrinterType.usb, bytes: bytes);
+    log('Settlement receipt sent to USB ${printer.deviceName}');
   }
 
   static Future<List<int>> _buildReceiptBytes({
