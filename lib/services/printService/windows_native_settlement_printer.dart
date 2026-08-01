@@ -204,10 +204,29 @@ class WindowsNativeSettlementPrinter {
     if (!Platform.isWindows) return;
     try {
       final billNo = result['billNo']?.toString() ?? '';
-      final paidAmount = (result['paidAmount'] as num?)?.toDouble() ?? 0.0;
+      final jobNo = (result['jobNo'] ??
+              orderData['jobNo'] ??
+              orderData['JobNo'] ??
+              '')
+          .toString()
+          .trim();
+      final paidAmount = (result['paidAmount'] as num?)?.toDouble() ??
+          (orderData['paidAmount'] as num?)?.toDouble() ??
+          0.0;
       final balancePaid = (result['balancePaid'] as num?)?.toDouble() ?? 0.0;
       final paymentMode =
           result['paymentMode']?.toString().toUpperCase() ?? 'CASH';
+      double parseAmt(dynamic v) {
+        if (v == null) return 0.0;
+        if (v is num) return v.toDouble();
+        return double.tryParse(v.toString()) ?? 0.0;
+      }
+      final outstandingBalance = parseAmt(
+        result['customerOsBalance'] ??
+            result['outstandingBalance'] ??
+            orderData['customerOsBalance'] ??
+            orderData['outstandingBalance'],
+      );
       final netAmount = (orderData['netAmount'] as num?)?.toDouble() ??
           (orderData['subTotalM'] as num?)?.toDouble() ??
           0.0;
@@ -221,23 +240,86 @@ class WindowsNativeSettlementPrinter {
           (orderData['tax1RateM'] as num?)?.toDouble() ??
           0.0;
 
+      final rawSplits = result['paymentSplits'] ?? orderData['paymentSplits'];
+      final List<Map<String, dynamic>> paymentSplits = [];
+      if (rawSplits is List) {
+        for (final s in rawSplits) {
+          if (s is! Map) continue;
+          final mode = (s['payMode'] ?? s['PayMode'] ?? '').toString().trim();
+          final amount = (s['amount'] as num?)?.toDouble() ??
+              (s['billAmount'] as num?)?.toDouble() ??
+              double.tryParse('${s['amount'] ?? s['billAmount'] ?? ''}') ??
+              0.0;
+          if (mode.isEmpty || amount <= 0) continue;
+          paymentSplits.add({
+            'payMode': mode.toUpperCase(),
+            'amount': amount,
+            'amountStr': amount.toStringAsFixed(currencyDecimals),
+          });
+        }
+      }
+
       final items = List<Map<String, dynamic>>.from(orderData['items'] ?? []);
       final counterNo = orderData['counterNo']?.toString() ?? '';
       final orderNo = (orderData['kotPrefix']?.toString() ?? '') +
           (orderData['kotNumber']?.toString() ?? '');
-      final orderNoDisplay = orderNo.isNotEmpty
-          ? orderNo
-          : (orderData['kotId']?.toString() ?? '--');
+      final orderNoDisplay = jobNo.isNotEmpty
+          ? jobNo
+          : (orderNo.isNotEmpty
+              ? orderNo
+              : (orderData['kotId']?.toString() ?? '--'));
       final orderType =
-          orderData['orderType']?.toString().toUpperCase() ?? 'DINE IN';
+          orderData['orderType']?.toString().toUpperCase() ?? 'WALK-IN';
       final tableName = orderData['tableName']?.toString() ??
-          orderData['tableId']?.toString() ?? '-';
+          orderData['chairName']?.toString() ??
+          orderData['tableId']?.toString() ??
+          '-';
       final waiterName = orderData['waiterName']?.toString() ??
-          orderData['waiterId']?.toString() ?? '-';
+          orderData['stylistName']?.toString() ??
+          orderData['waiterId']?.toString() ??
+          '-';
       final cashierName = orderData['cashierName']?.toString() ??
           SessionManager().staffName ??
           'CASHIER';
-      final comments = orderData['comments']?.toString() ?? '0';
+      final comments = orderData['comments']?.toString() ?? '';
+      final printCustomerName = customerName.trim().isNotEmpty
+          ? customerName.trim()
+          : (orderData['customerName'] ?? orderData['CustomerName'] ?? '')
+              .toString()
+              .trim();
+      final customerCode = (orderData['customerCode'] ??
+              orderData['CustomerCode'] ??
+              '')
+          .toString()
+          .trim();
+      final customerMobile = (orderData['mobileNo'] ??
+              orderData['MobileNo'] ??
+              orderData['telephone'] ??
+              '')
+          .toString()
+          .trim();
+      final customerAddress =
+          (orderData['address'] ?? orderData['Address'] ?? '')
+              .toString()
+              .trim();
+      final customerTrn = (orderData['taxRegNo'] ?? orderData['CustTRN'] ?? '')
+          .toString()
+          .trim();
+      final customerId = (orderData['customerId'] ??
+              orderData['CustomerID'] ??
+              result['customerId'] ??
+              '')
+          .toString()
+          .trim();
+      final nameLower = printCustomerName.toLowerCase();
+      final isWalkIn = customerId.isEmpty ||
+          customerId == '0' ||
+          nameLower.isEmpty ||
+          nameLower == 'walk-in' ||
+          nameLower == 'walkin' ||
+          nameLower == 'walk in' ||
+          nameLower == 'cash customer' ||
+          nameLower == 'select customer';
 
       final now = DateTime.now();
       final finalDateStr = dateStr ?? DateFormat('dd/MMM/yyyy').format(now);
@@ -295,9 +377,11 @@ class WindowsNativeSettlementPrinter {
 
       final Map<String, dynamic> args = {
         'billNo': billNo,
+        'jobNo': orderNoDisplay,
         'paidAmount': paidAmount,
         'balancePaid': balancePaid,
         'paymentMode': paymentMode,
+        'outstandingBalance': outstandingBalance,
         'netAmount': netAmount,
         'taxableAmount': taxableAmount,
         'tax1Amount': tax1Amount,
@@ -309,11 +393,18 @@ class WindowsNativeSettlementPrinter {
         'waiterName': waiterName,
         'cashierName': cashierName,
         'comments': comments,
+        'customerName': printCustomerName,
+        'customerCode': customerCode,
+        'mobileNo': customerMobile,
+        'address': customerAddress,
+        'taxRegNo': customerTrn,
+        'showCustomer': !isWalkIn,
         'dateStr': finalDateStr,
         'timeStr': finalTimeStr,
         'printerName': printerName,
         'currencyDecimals': currencyDecimals,
         'items': itemsPayload,
+        if (paymentSplits.isNotEmpty) 'paymentSplits': paymentSplits,
       };
 
       await _channel.invokeMethod<void>('printSettlementReceipt', args);

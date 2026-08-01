@@ -198,7 +198,7 @@ class ItemRemoveDialogState extends ConsumerState<ItemRemoveDialog> {
     if (items.length <= 1) {
       _showCustomDialog(
         title: "Cannot Remove",
-        message: "Only one item remains in KOT. You have to make BILL CANCEL.",
+        message: "Only one item remains in this job. You have to make BILL CANCEL.",
         icon: Icons.error_outline,
         iconColor: Colors.red[700]!,
       );
@@ -496,10 +496,10 @@ class ItemRemoveDialogState extends ConsumerState<ItemRemoveDialog> {
                   _buildHeaderCell("No.", 1,
                       icon: Icons.format_list_numbered,
                       align: TextAlign.center),
-                  _buildHeaderCell("KOT", 2,
+                  _buildHeaderCell("Job", 2,
                       icon: Icons.receipt_long, align: TextAlign.center),
                   _buildHeaderCell("Item Name", 4,
-                      icon: Icons.restaurant_menu, align: TextAlign.left),
+                      icon: Icons.spa, align: TextAlign.left),
                   _buildHeaderCell("Quantity", 2,
                       icon: Icons.shopping_cart, align: TextAlign.center),
                   _buildHeaderCell("Price  ", 2,

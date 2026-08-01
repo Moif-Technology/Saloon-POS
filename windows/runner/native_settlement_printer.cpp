@@ -42,9 +42,11 @@ struct ReceiptData {
   std::string trn_no;
 
   std::string bill_no;
+  std::string job_no;
   std::string paid_amount;
   std::string balance_paid;
   std::string payment_mode;
+  std::string outstanding_balance;
   std::string net_amount;
   std::string taxable_amount;
   std::string tax1_amount;
@@ -56,6 +58,12 @@ struct ReceiptData {
   std::string waiter_name;
   std::string cashier_name;
   std::string comments;
+  std::string customer_name;
+  std::string customer_code;
+  std::string mobile_no;
+  std::string address;
+  std::string tax_reg_no;
+  bool show_customer = false;
   std::string date_str;
   std::string time_str;
   std::string printer_name;
@@ -69,6 +77,12 @@ struct ReceiptData {
     std::string tax_line;
   };
   std::vector<LineItem> items;
+
+  struct PaymentSplit {
+    std::string pay_mode;
+    std::string amount;
+  };
+  std::vector<PaymentSplit> payment_splits;
 };
 
 bool ParseReceiptData(const EncodableValue& args, ReceiptData& out) {
@@ -90,6 +104,8 @@ bool ParseReceiptData(const EncodableValue& args, ReceiptData& out) {
   out.trn_no = getStr("trnNo");
 
   out.bill_no = getStr("billNo");
+  out.job_no = getStr("jobNo");
+  if (out.job_no.empty()) out.job_no = getStr("orderNoDisplay");
 
   out.paid_amount = getStr("paidAmountStr");
   if (out.paid_amount.empty()) out.paid_amount = fmtNum(getDbl("paidAmount"));
@@ -98,6 +114,11 @@ bool ParseReceiptData(const EncodableValue& args, ReceiptData& out) {
   if (out.balance_paid.empty()) out.balance_paid = fmtNum(getDbl("balancePaid"));
 
   out.payment_mode = getStr("paymentMode");
+  out.outstanding_balance = getStr("outstandingBalanceStr");
+  if (out.outstanding_balance.empty()) {
+    double os = getDbl("outstandingBalance");
+    if (os > 0.005) out.outstanding_balance = fmtNum(os);
+  }
 
   out.net_amount = getStr("netAmountStr");
   if (out.net_amount.empty()) out.net_amount = fmtNum(getDbl("netAmount"));
@@ -123,6 +144,19 @@ bool ParseReceiptData(const EncodableValue& args, ReceiptData& out) {
   out.waiter_name = getStr("waiterName");
   out.cashier_name = getStr("cashierName");
   out.comments = getStr("comments");
+  out.customer_name = getStr("customerName");
+  out.customer_code = getStr("customerCode");
+  out.mobile_no = getStr("mobileNo");
+  out.address = getStr("address");
+  out.tax_reg_no = getStr("taxRegNo");
+  {
+    auto it = top.find(EncodableValue(std::string("showCustomer")));
+    if (it != top.end() && std::holds_alternative<bool>(it->second)) {
+      out.show_customer = std::get<bool>(it->second);
+    } else {
+      out.show_customer = !out.customer_name.empty();
+    }
+  }
   out.date_str = getStr("dateStr");
   out.time_str = getStr("timeStr");
   out.printer_name = getStr("printerName");
@@ -161,12 +195,32 @@ bool ParseReceiptData(const EncodableValue& args, ReceiptData& out) {
     }
   }
 
+  auto it_splits = top.find(EncodableValue(std::string("paymentSplits")));
+  if (it_splits != top.end() && std::holds_alternative<EncodableList>(it_splits->second)) {
+    for (const auto& ev : std::get<EncodableList>(it_splits->second)) {
+      if (!std::holds_alternative<EncodableMap>(ev)) continue;
+      const auto& split = std::get<EncodableMap>(ev);
+      ReceiptData::PaymentSplit ps;
+      ps.pay_mode = GetString(split, "payMode");
+      if (ps.pay_mode.empty()) ps.pay_mode = GetString(split, "PayMode");
+      ps.amount = GetString(split, "amountStr");
+      if (ps.amount.empty()) {
+        double amt = GetDouble(split, "amount");
+        if (amt <= 0) amt = GetDouble(split, "billAmount");
+        if (amt > 0) ps.amount = fmtNum(amt);
+      }
+      if (!ps.pay_mode.empty() && !ps.amount.empty()) {
+        out.payment_splits.push_back(std::move(ps));
+      }
+    }
+  }
+
   return true;
 }
 
 // KOT (Kitchen Order Ticket) print data - matches VB Print_KOT layout
 struct KotData {
-  std::string title;           // "KITCHEN ORDER TICKET" | "Duplicate KOT" | "CANCEL KOT"
+  std::string title;           // "JOB TICKET" | "Duplicate Job" | "CANCEL JOB"
   std::string kitchen_location;// e.g. "PASSING" or kitchen name
   std::string supply_type;     // DINE IN | PARCEL | DELIVERY
   std::string kot_prefix;
@@ -198,7 +252,7 @@ bool ParseKotData(const EncodableValue& args, KotData& out) {
   auto getDbl = [&top](const char* k) { return GetDouble(top, k); };
 
   out.title = getStr("title");
-  if (out.title.empty()) out.title = "KITCHEN ORDER TICKET";
+  if (out.title.empty()) out.title = "JOB TICKET";
   out.kitchen_location = getStr("kitchenLocation");
   if (out.kitchen_location.empty()) out.kitchen_location = "PASSING";
   out.supply_type = getStr("supplyType");
@@ -454,26 +508,50 @@ bool PrintSettlementGdi(const ReceiptData& r) {
 
   DrawLineAuto(hdc, left, y, fontBold, sep);
   DrawCenteredAuto(hdc, pageWidth, y, bigBold, L"Tax Invoice");
+  DrawCenteredAuto(hdc, pageWidth, y, font, L"\x0641\x0627\x062a\x0648\x0631\x0629 \x0636\x0631\x064a\x0628\x064a\x0629");
   DrawLineAuto(hdc, left, y, fontBold, sep);
 
+  // Counter-POS style header + JobNo under Bill #
   DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
-                    L"OrderNo : " + Utf8ToWide(r.order_no_display),
-                    Utf8ToWide(r.order_type));
+                    L"BILL # : " + Utf8ToWide(r.bill_no),
+                    Utf8ToWide(r.date_str) + L" " + Utf8ToWide(r.time_str));
 
-  DrawLineAuto(hdc, left, y, fontBold, sep);
-
-  DrawLineAuto(hdc, left, y, fontBold, L"Inv No #    " + Utf8ToWide(r.bill_no));
-  DrawLineAuto(hdc, left, y, fontBold, L"Inv Date : " + Utf8ToWide(r.date_str) + L" " + Utf8ToWide(r.time_str));
+  {
+    std::string jobLabel = r.job_no;
+    if (jobLabel.empty()) jobLabel = r.order_no_display;
+    if (!jobLabel.empty()) {
+      DrawLineAuto(hdc, left, y, fontBold, L"JOB #  : " + Utf8ToWide(jobLabel));
+    }
+  }
 
   DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
-                    L"Cntr: " + Utf8ToWide(r.counter_no),
-                    L"Cashier : " + Utf8ToWide(r.cashier_name));
+                    L"COUNTER : " + Utf8ToWide(r.counter_no),
+                    L"CASHIER : " + Utf8ToWide(r.cashier_name));
 
   DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
-                    L"Table : " + Utf8ToWide(r.table_name),
-                    L"Waiter : " + Utf8ToWide(r.waiter_name));
+                    L"CHAIR : " + Utf8ToWide(r.table_name),
+                    L"STYLIST : " + Utf8ToWide(r.waiter_name));
 
-  DrawLineAuto(hdc, left, y, fontBold, L"Comments : " + Utf8ToWide(r.comments));
+  if (r.show_customer && !r.customer_name.empty()) {
+    DrawLineAuto(hdc, left, y, fontBold, sep);
+    DrawLineAuto(hdc, left, y, fontBold, L"Customer : " + Utf8ToWide(r.customer_name));
+    if (!r.customer_code.empty()) {
+      DrawLineAuto(hdc, left, y, fontBold, L"Code     : " + Utf8ToWide(r.customer_code));
+    }
+    if (!r.tax_reg_no.empty()) {
+      DrawLineAuto(hdc, left, y, fontBold, L"TRN      : " + Utf8ToWide(r.tax_reg_no));
+    }
+    if (!r.mobile_no.empty()) {
+      DrawLineAuto(hdc, left, y, fontBold, L"Tel      : " + Utf8ToWide(r.mobile_no));
+    }
+    if (!r.address.empty()) {
+      DrawLineAuto(hdc, left, y, fontBold, L"Address  : " + Utf8ToWide(r.address));
+    }
+  }
+
+  if (!r.comments.empty() && r.comments != "0") {
+    DrawLineAuto(hdc, left, y, fontBold, L"Comments : " + Utf8ToWide(r.comments));
+  }
 
   y += 6;
   DrawLineAuto(hdc, left, y, fontBold, sep);
@@ -502,6 +580,12 @@ bool PrintSettlementGdi(const ReceiptData& r) {
 
   DrawLineAuto(hdc, left, y, fontBold, L"Settlement : " + Utf8ToWide(r.payment_mode));
 
+  for (const auto& split : r.payment_splits) {
+    DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
+                      Utf8ToWide(split.pay_mode),
+                      Utf8ToWide(split.amount));
+  }
+
   DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
                     L"Items : " + std::to_wstring(r.items.size()),
                     L"Bill Amt : " + Utf8ToWide(r.net_amount));
@@ -513,6 +597,14 @@ bool PrintSettlementGdi(const ReceiptData& r) {
   DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
                     L"",
                     L"Bal. Amount: " + Utf8ToWide(r.balance_paid));
+
+  if (!r.outstanding_balance.empty() ||
+      (r.payment_mode == "CREDIT" || r.payment_mode == "credit")) {
+    std::string os = r.outstanding_balance.empty() ? r.net_amount : r.outstanding_balance;
+    DrawLeftRightAuto(hdc, pageWidth, left, y, fontBold,
+                      L"O/S Balance",
+                      Utf8ToWide(os));
+  }
 
   DrawLineAuto(hdc, left, y, fontBold, sep);
 
@@ -581,7 +673,7 @@ bool PrintKOTGdi(const KotData& k) {
 
   DOCINFOW di = {};
   di.cbSize = sizeof(di);
-  di.lpszDocName = L"KOT";
+  di.lpszDocName = L"Job";
 
   if (StartDocW(hdc, &di) <= 0) {
     DeleteDC(hdc);
@@ -650,8 +742,8 @@ bool PrintKOTGdi(const KotData& k) {
   DrawLineAuto(hdc, left, y, fontBold, Utf8ToWide(locLine));
   DrawLineAuto(hdc, left, y, font, sep);
 
-  // KOT#PrefixNumber-AreaName
-  std::string kotLine = "KOT#" + k.kot_prefix + k.kot_number + "-" + k.area_name;
+  // Job#PrefixNumber-AreaName
+  std::string kotLine = "Job#" + k.kot_prefix + k.kot_number + "-" + k.area_name;
   DrawLineAuto(hdc, left, y, kotNumFont, Utf8ToWide(kotLine));
   if (!k.table_name.empty()) {
     DrawLineAuto(hdc, left, y, kotNumFont, L"Table No - " + Utf8ToWide(k.table_name));
@@ -764,13 +856,13 @@ void RegisterNativeSettlementPrinter(flutter::BinaryMessenger* messenger) {
         if (call.method_name() == "printKotReceipt") {
           KotData data;
           if (!ParseKotData(*args, data)) {
-            result->Error("INVALID_ARGS", "Invalid KOT data");
+            result->Error("INVALID_ARGS", "Invalid job data");
             return;
           }
           if (PrintKOTGdi(data)) {
             result->Success(flutter::EncodableValue());
           } else {
-            result->Error("PRINT_FAILED", "Windows GDI KOT print failed");
+            result->Error("PRINT_FAILED", "Windows GDI job print failed");
           }
           return;
         }

@@ -218,7 +218,7 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "Move a KOT to a different area, table or chair",
+                  "Move a job to a different area, table or chair",
                   style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                 ),
               ],
@@ -255,7 +255,7 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
       ),
       child: Row(
         children: [
-          _stepChip("1", "KOT", selectedKot ?? "—", Icons.receipt_long),
+          _stepChip("1", "Job", selectedKot ?? "—", Icons.receipt_long),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Icon(Icons.arrow_forward, size: 18, color: Colors.grey[400]),
@@ -378,7 +378,7 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
               Icon(Icons.receipt_long, size: 20, color: Colors.grey[700]),
               const SizedBox(width: 8),
               Text(
-                "Select KOT",
+                "Select Job",
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.grey[800]),
               ),
             ],
@@ -767,15 +767,15 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
         children: [
           Text(
             _canSubmit
-                ? "Ready to move KOT to $selectedArea${selectedTable != null ? " · $selectedTable" : ""}"
-                : "Select KOT, then new area${_areaHasTables ? ", table and optional chair" : ""}",
+                ? "Ready to move job to $selectedArea${selectedTable != null ? " · $selectedTable" : ""}"
+                : "Select job, then new area${_areaHasTables ? ", table and optional chair" : ""}",
             style: TextStyle(fontSize: 13, color: Colors.grey[600]),
           ),
           const Spacer(),
           FilledButton.icon(
             onPressed: _canSubmit ? _submit : null,
             icon: const Icon(Icons.swap_horiz, size: 20),
-            label: const Text("Move KOT"),
+            label: const Text("Move Job"),
             style: FilledButton.styleFrom(
               backgroundColor: _primary,
               foregroundColor: Colors.white,
@@ -808,13 +808,13 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
 
     if (kotId == null || areaId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a KOT and area")),
+        const SnackBar(content: Text("Please select a job and area")),
       );
       return;
     }
     if (kotId == "0") {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid KOT selection. Please select a KOT from the list.")),
+        const SnackBar(content: Text("Invalid job selection. Please select a job from the list.")),
       );
       return;
     }
@@ -833,7 +833,7 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
     if (response["success"] != true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(response["message"] ?? "Failed to move KOT"),
+          content: Text(response["message"] ?? "Failed to move job"),
           backgroundColor: Colors.orange,
           behavior: SnackBarBehavior.floating,
         ),
@@ -863,7 +863,7 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
           children: [
             CircularProgressIndicator(color: _primary),
             SizedBox(height: 16),
-            Text("Loading KOTs and areas...", style: TextStyle(color: Colors.grey)),
+            Text("Loading jobs and areas...", style: TextStyle(color: Colors.grey)),
           ],
         ),
       ),
@@ -921,7 +921,7 @@ class _AreaChangeDialogState extends State<AreaChangeDialog> {
             Text("Chair in use"),
           ],
         ),
-        content: const Text("This chair already has a KOT. Please choose another chair."),
+        content: const Text("This chair already has a job. Please choose another chair."),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),

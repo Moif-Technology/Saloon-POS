@@ -1,21 +1,78 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-class OutstandingBillsDialog extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:my_app/services/api_service.dart';
+
+/// Outstanding Bills — loads credit customers with O/S from the same
+/// settlement API Counter-POS uses (`/salon-pos/settlement/credit-customers`).
+class OutstandingBillsDialog extends StatefulWidget {
+  const OutstandingBillsDialog({super.key});
+
   static const Color _primaryColor = Color(0xFF521C1D);
 
-  // Column flexes: keep header / rows / totals in sync
   static const int _flexSlNo = 1;
-  static const int _flexCustomer = 3;
-  static const int _flexBillCount = 2;
+  static const int _flexCustomer = 4;
+  static const int _flexCode = 2;
   static const int _flexOsAmount = 2;
-  static const int _flex030 = 2;
-  static const int _flex3060 = 2;
-  static const int _flex60120 = 2;
-  static const int _flex120Plus = 2;
 
-  // Label span under Sl No + Customer + Bill Count (totals start at O/S Amount)
-  static const int _flexLabelSpan =
-      _flexSlNo + _flexCustomer + _flexBillCount; // 6
+  @override
+  State<OutstandingBillsDialog> createState() => _OutstandingBillsDialogState();
+}
+
+class _OutstandingBillsDialogState extends State<OutstandingBillsDialog> {
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  bool _loading = false;
+  String? _error;
+  List<Map<String, dynamic>> _rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load('');
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  String _fmt(num v) => NumberFormat('#,##0.00').format(v);
+
+  Future<void> _load(String q) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list =
+          await ApiService().fetchCreditSettlementCustomers(search: q);
+      if (!mounted) return;
+      setState(() {
+        _rows = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  void _onSearch(String q) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () => _load(q));
+  }
+
+  double get _totalOs => _rows.fold<double>(0, (s, r) {
+        final v = r['osAmount'] ?? r['OsAmount'] ?? 0;
+        return s + (v is num ? v.toDouble() : double.tryParse('$v') ?? 0);
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -42,105 +99,81 @@ class OutstandingBillsDialog extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
-          mainAxisSize: MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Header ──────────────────────────────────────────────
             Container(
               constraints: const BoxConstraints(minHeight: 56),
               padding: const EdgeInsets.only(left: 20, right: 8),
-              decoration: const BoxDecoration(
-                color: _primaryColor,
-              ),
+              color: OutstandingBillsDialog._primaryColor,
               child: Row(
                 children: [
                   const Expanded(
                     child: Text(
                       'Outstanding Bills',
-                      textAlign: TextAlign.left,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
-                        letterSpacing: -0.2,
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
-                      ),
-                      tooltip: 'Close',
-                      icon: const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
+                  IconButton(
+                    onPressed: _loading
+                        ? null
+                        : () => _load(_searchCtrl.text.trim()),
+                    tooltip: 'Refresh',
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close, color: Colors.white),
                   ),
                 ],
               ),
             ),
-
-            // ── Body ────────────────────────────────────────────────
+            if (_error != null)
+              Material(
+                color: Colors.red.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(_error!, style: TextStyle(color: Colors.red.shade800)),
+                ),
+              ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildFilterSection(),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: _buildTableContainer(),
+                    TextField(
+                      controller: _searchCtrl,
+                      onChanged: _onSearch,
+                      decoration: InputDecoration(
+                        hintText: 'Search customer name / code / mobile',
+                        prefixIcon: const Icon(Icons.search),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    _buildFooterTotals(),
+                    Expanded(child: _buildTable()),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Total O/S: ${_fmt(_totalOs)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: OutstandingBillsDialog._primaryColor,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ),
-
-            // ── Footer — Print bottom-right ─────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      // Existing Print behavior preserved (stub)
-                    },
-                    icon: const Icon(Icons.print, color: Colors.white, size: 20),
-                    label: const Text(
-                      'Print',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryColor,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(120, 44),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
@@ -149,141 +182,7 @@ class OutstandingBillsDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterSection() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Filter:',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: _primaryColor,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Row(
-                children: [
-                  Radio(
-                    value: 'All',
-                    groupValue: 'Filter',
-                    onChanged: (_) {},
-                    activeColor: _primaryColor,
-                  ),
-                  const Text('All', style: TextStyle(color: _primaryColor)),
-                ],
-              ),
-              Row(
-                children: [
-                  Radio(
-                    value: 'Filter',
-                    groupValue: 'Filter',
-                    onChanged: (_) {},
-                    activeColor: _primaryColor,
-                  ),
-                  const Text('Filter', style: TextStyle(color: _primaryColor)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _buildDatePickerField('From')),
-              const SizedBox(width: 12),
-              Expanded(child: _buildDatePickerField('To')),
-              const SizedBox(width: 12),
-              Expanded(child: _buildTextField('Customer Name')),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDatePickerField(String label) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: _primaryColor,
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'MM/DD/YYYY',
-            hintStyle: TextStyle(color: Colors.grey.shade400),
-            suffixIcon: const Icon(
-              Icons.calendar_today,
-              size: 18,
-              color: Colors.grey,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 10,
-              horizontal: 14,
-            ),
-          ),
-          readOnly: true,
-          onTap: () {
-            // Implement date picker logic here
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTextField(String label) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: _primaryColor,
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          decoration: InputDecoration(
-            isDense: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 10,
-              horizontal: 14,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTableContainer() {
+  Widget _buildTable() {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade300),
@@ -292,139 +191,110 @@ class OutstandingBillsDialog extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          _buildTableHeader(),
+          Container(
+            color: OutstandingBillsDialog._primaryColor.withOpacity(0.1),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            child: Row(
+              children: const [
+                _Hdr('Sl No', OutstandingBillsDialog._flexSlNo),
+                _Hdr('Customer', OutstandingBillsDialog._flexCustomer),
+                _Hdr('Code', OutstandingBillsDialog._flexCode),
+                _Hdr('O/S Amount', OutstandingBillsDialog._flexOsAmount),
+              ],
+            ),
+          ),
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: List.generate(
-                  10,
-                  (index) => _buildTableRow(index + 1),
-                ),
-              ),
-            ),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _rows.isEmpty
+                    ? const Center(
+                        child: Text('No credit customers with outstanding'),
+                      )
+                    : ListView.builder(
+                        itemCount: _rows.length,
+                        itemBuilder: (context, index) {
+                          final r = _rows[index];
+                          final os = r['osAmount'] ?? 0;
+                          final osNum = os is num
+                              ? os.toDouble()
+                              : double.tryParse('$os') ?? 0;
+                          return Container(
+                            color: index.isEven
+                                ? Colors.white
+                                : Colors.grey.shade50,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 12),
+                            child: Row(
+                              children: [
+                                _Cell('${index + 1}',
+                                    OutstandingBillsDialog._flexSlNo),
+                                _Cell(
+                                  (r['customerName'] ?? '').toString(),
+                                  OutstandingBillsDialog._flexCustomer,
+                                  align: TextAlign.left,
+                                ),
+                                _Cell(
+                                  (r['customerCode'] ?? '').toString(),
+                                  OutstandingBillsDialog._flexCode,
+                                ),
+                                _Cell(
+                                  _fmt(osNum),
+                                  OutstandingBillsDialog._flexOsAmount,
+                                  bold: true,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildTableHeader() {
-    return Container(
-      color: _primaryColor.withOpacity(0.1),
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      child: Row(
-        children: [
-          _buildHeaderCell('Sl No', flex: _flexSlNo),
-          _buildHeaderCell('Customer Name', flex: _flexCustomer),
-          _buildHeaderCell('Bill Count', flex: _flexBillCount),
-          _buildHeaderCell('O/S Amount', flex: _flexOsAmount),
-          _buildHeaderCell('0-30', flex: _flex030),
-          _buildHeaderCell('30-60', flex: _flex3060),
-          _buildHeaderCell('60-120', flex: _flex60120),
-          _buildHeaderCell('120+', flex: _flex120Plus),
-        ],
-      ),
-    );
-  }
+class _Hdr extends StatelessWidget {
+  final String label;
+  final int flex;
+  const _Hdr(this.label, this.flex);
 
-  Widget _buildHeaderCell(String label, {int flex = 1}) {
+  @override
+  Widget build(BuildContext context) {
     return Expanded(
       flex: flex,
-      child: Center(
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: _primaryColor,
-            fontSize: 12,
-          ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: OutstandingBillsDialog._primaryColor,
+          fontSize: 12,
         ),
       ),
     );
   }
+}
 
-  Widget _buildTableRow(int index) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 40),
-      color: index % 2 == 0 ? Colors.white : Colors.grey.shade50,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Row(
-        children: [
-          _buildTableCell(index.toString(), flex: _flexSlNo),
-          _buildTableCell('Customer $index', flex: _flexCustomer),
-          _buildTableCell('2', flex: _flexBillCount),
-          _buildTableCell('\$100', flex: _flexOsAmount),
-          _buildTableCell('\$20', flex: _flex030),
-          _buildTableCell('\$30', flex: _flex3060),
-          _buildTableCell('\$40', flex: _flex60120),
-          _buildTableCell('\$10', flex: _flex120Plus),
-        ],
-      ),
-    );
-  }
+class _Cell extends StatelessWidget {
+  final String text;
+  final int flex;
+  final TextAlign align;
+  final bool bold;
+  const _Cell(this.text, this.flex,
+      {this.align = TextAlign.center, this.bold = false});
 
-  Widget _buildTableCell(String content, {int flex = 1}) {
+  @override
+  Widget build(BuildContext context) {
     return Expanded(
       flex: flex,
-      child: Center(
-        child: Text(
-          content,
-          style: const TextStyle(fontSize: 13),
+      child: Text(
+        text,
+        textAlign: align,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
         ),
-      ),
-    );
-  }
-
-  Widget _buildFooterTotals() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            flex: _flexLabelSpan,
-            child: Text(
-              'Totals',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          _buildTotalCell('Total O/S Amount', '\$0.00', flex: _flexOsAmount),
-          _buildTotalCell('Total 0-30', '\$0.00', flex: _flex030),
-          _buildTotalCell('Total 30-60', '\$0.00', flex: _flex3060),
-          _buildTotalCell('Total 60-120', '\$0.00', flex: _flex60120),
-          _buildTotalCell('Total 120+', '\$0.00', flex: _flex120Plus),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTotalCell(String label, String amount, {required int flex}) {
-    return Expanded(
-      flex: flex,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: _primaryColor,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            amount,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-        ],
       ),
     );
   }

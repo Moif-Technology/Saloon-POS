@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:developer';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:my_app/core/providers/counter_close_provider.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
+import 'package:my_app/services/counter_close_mapper.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.dart';
 import 'package:thermal_printer/thermal_printer.dart';
 
@@ -16,12 +17,15 @@ class PrintPage extends ConsumerStatefulWidget {
   final double collectedAmount;
   final double cashDifference;
   final String? selectedStaffId;
+  /// When set (after X/Z API), used instead of re-fetching the provider.
+  final Map<String, dynamic>? reportData;
   const PrintPage({
     Key? key,
     required this.Type,
     required this.collectedAmount,
     this.cashDifference = 0.0,
     this.selectedStaffId,
+    this.reportData,
   }) : super(key: key);
 
   @override
@@ -128,51 +132,54 @@ class _PrintPageState extends ConsumerState<PrintPage> {
     return List.filled(length, '-').join();
   }
 
+  String _amt(dynamic v) =>
+      counterCloseNum(v).toStringAsFixed(2);
+
   Future<void> _printReceipt() async {
     _selectDefaultPrinter(); // Ensure a printer is selected
 
     if (selectedPrinter == null) {
       log('No printers available.');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('No USB printers detected. Please connect a printer.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'No USB printers detected. Please connect a printer.')),
+        );
+      }
       return;
     }
 
-    if (selectedPrinter == null) {
-      log('No printers available.');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('No USB printers detected. Please connect a printer.')),
-      );
-      return;
-    }
-
-    // ✅ Fetch Provider Data Only When Printing
+    // ✅ Prefer data from X/Z close response; else load live summary
     try {
-      final counterCloseData = await ref
-          .read(counterCloseProvider(widget.selectedStaffId ?? "null").future);
+      Map<String, dynamic> counterCloseData;
+      if (widget.reportData != null && widget.reportData!.isNotEmpty) {
+        counterCloseData = Map<String, dynamic>.from(widget.reportData!);
+      } else {
+        counterCloseData = Map<String, dynamic>.from(await ref.read(
+            counterCloseProvider(widget.selectedStaffId ?? "null").future));
+      }
 
       final pendingKotCheck = ref.read(pendingKotCheckProvider);
       counterCloseData['pendingKotCheck'] = pendingKotCheck;
-      print(counterCloseData);
-      if (widget.Type == 'Z-Report') {
+      if (widget.Type == 'Z-Report' || widget.collectedAmount > 0) {
         counterCloseData['CollectedAmount'] = widget.collectedAmount;
-        counterCloseData['CashDifference'] = widget.collectedAmount -
-            (double.tryParse(
-                    counterCloseData['AmountToBeCollected'].toString()) ??
-                0.0);
-
+        counterCloseData['collectedCash'] = widget.collectedAmount;
+        final toCollect =
+            counterCloseNum(counterCloseData['AmountToBeCollected']);
+        counterCloseData['CashDifference'] =
+            widget.collectedAmount - toCollect;
+        counterCloseData['cashDifference'] =
+            widget.collectedAmount - toCollect;
       }
 
       if (counterCloseData.isEmpty) {
         log('No counter close data available.');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No data available to print.')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No data available to print.')),
+          );
+        }
         return;
       }
       // ✅ Use provider data directly when printing
@@ -180,31 +187,39 @@ class _PrintPageState extends ConsumerState<PrintPage> {
       final profile = await CapabilityProfile.load(name: 'XP-N160I');
       final generator = Generator(PaperSize.mm80, profile);
 
-      // // ✅ Extract data from provider dynamically
-      // final counterNo = data['CounterNo']?.toString() ?? 'N/A';
-      // final cashierName = data['cashierName'] ?? 'Unknown';
-      // final billCount = data['BillCount']?.toString() ?? '0';
-
-      // ✅ Get Current Date & Time
       DateTime now = DateTime.now();
       String formattedDate = "${now.day}/${now.month}/${now.year}";
       String formattedTime =
           "${now.hour}:${now.minute}:${now.second} ${now.hour >= 12 ? 'PM' : 'AM'}";
 
-      // ✅ Business Header
-      bytes += generator.text('Emirates Sea Restaurant L.L.C',
-          styles: PosStyles(align: PosAlign.center, bold: true));
-      bytes += generator.text('MW4, Mussafah, Abu Dhabi, U.A.E',
-          styles: PosStyles(align: PosAlign.center));
-      bytes += generator.text('TL:025506688, Mb:0567137567/0544761636',
-          styles: PosStyles(align: PosAlign.center));
+      final company = ref.read(companyDetailsProvider);
+      final h1 = (company['heading1'] ?? '').trim();
+      final h2 = (company['heading2'] ?? '').trim();
+      final h3 = (company['heading3'] ?? '').trim();
+      final trn = (company['taxRegNo'] ?? '').trim();
+
+      bytes += generator.text(
+          h1.isNotEmpty ? h1 : 'SALON POS',
+          styles: const PosStyles(align: PosAlign.center, bold: true));
+      if (h2.isNotEmpty) {
+        bytes += generator.text(h2,
+            styles: const PosStyles(align: PosAlign.center));
+      }
+      if (h3.isNotEmpty) {
+        bytes += generator.text(h3,
+            styles: const PosStyles(align: PosAlign.center));
+      }
+      if (trn.isNotEmpty) {
+        bytes += generator.text('TRN: $trn',
+            styles: const PosStyles(align: PosAlign.center));
+      }
 
       // ✅ Full-width separator line
       bytes += generator.text('-' * 48);
 
       // ✅ Print "X-Report" or "Z-Report" based on `widget.Type`
       bytes += generator.text('${widget.Type}',
-          styles: PosStyles(align: PosAlign.center, bold: true));
+          styles: const PosStyles(align: PosAlign.center, bold: true));
 
       // ✅ Full-width separator line
       bytes += generator.text('-' * 48);
@@ -215,17 +230,21 @@ class _PrintPageState extends ConsumerState<PrintPage> {
         PosColumn(
             text: 'Time: $formattedTime',
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
-      // ✅ Counter Close & Counter No (Side-by-side)
+      final closeNo = (counterCloseData['closeNo'] ?? '').toString();
       bytes += generator.row([
-        PosColumn(text: 'Counter Close#:', width: 6),
+        PosColumn(
+            text: closeNo.isNotEmpty
+                ? 'Close#: $closeNo'
+                : 'Counter Close#:',
+            width: 6),
         PosColumn(
             text:
                 'Counter:${counterCloseData['CounterNo']?.toString() ?? 'N/A'}',
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       // ✅ Bill Count & Cashier Name (Side-by-side)
@@ -238,19 +257,31 @@ class _PrintPageState extends ConsumerState<PrintPage> {
         PosColumn(
           text: 'Cashier: ${counterCloseData['cashierName'] ?? 'Unknown'}',
           width: 6,
-          styles: PosStyles(align: PosAlign.right),
+          styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
+
+      final startBill = counterCloseData['startBillNo'];
+      final endBill = counterCloseData['endBillNo'];
+      if (startBill != null || endBill != null) {
+        bytes += generator.row([
+          PosColumn(text: 'First Bill: ${startBill ?? '—'}', width: 6),
+          PosColumn(
+              text: 'Last Bill: ${endBill ?? '—'}',
+              width: 6,
+              styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
 
       // ✅ Full-width separator line
       bytes += generator.text('-' * 48);
 // ✅ Table Header (Description | Amount)
       bytes += generator.row([
-        PosColumn(text: 'Description', width: 6, styles: PosStyles(bold: true)),
+        PosColumn(text: 'Description', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(
             text: 'Amount',
             width: 6,
-            styles: PosStyles(align: PosAlign.right, bold: true)),
+            styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
 
 // ✅ Full-width separator line
@@ -260,532 +291,214 @@ class _PrintPageState extends ConsumerState<PrintPage> {
       bytes += generator.row([
         PosColumn(text: 'Cash Sales:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['totalCash']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['totalCash']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Credit Received:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['ReceiptAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['ReceiptAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Advance Received:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['AdvanceReceived']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['AdvanceReceived']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
-        PosColumn(text: 'Total Cash IN:', width: 6),
+        PosColumn(text: 'Cash IN:', width: 6),
         PosColumn(
-            text: '${counterCloseData['CashIN']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['CashIN']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
-        PosColumn(text: 'Total Cash Out:', width: 6),
+        PosColumn(text: 'Cash OUT:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['CashOUt']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['CashOUt']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
-
-// ✅ Full-width separator for total
-      bytes += generator.text(generateSeparatorLine(48));
 
       bytes += generator.row([
+        PosColumn(text: 'TOTAL:', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(
-            text:
-                '${counterCloseData['totalCash']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 12,
-            styles: PosStyles(align: PosAlign.right, bold: true)),
+            text: _amt(counterCloseNum(counterCloseData['totalCash']) +
+                counterCloseNum(counterCloseData['ReceiptAmount'])),
+            width: 6,
+            styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
-      bytes += generator.feed(2); // Feeds 1 blank line
-// ✅ Refund Row
+
       bytes += generator.row([
         PosColumn(text: 'Refund:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['RefundAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['RefundAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
-// ✅ Full-width separator for clarity
       bytes += generator.text(generateSeparatorLine(48));
-      bytes += generator.feed(1); // Feeds 1 blank line
-// ✅ Cash To Be Collected
+
       bytes += generator.row([
+        PosColumn(text: 'Cash To Be Collected:', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(
-            text: 'Cash To Be Collected:',
+            text: _amt(counterCloseData['AmountToBeCollected']),
             width: 6,
-            styles: PosStyles(bold: true)),
-        PosColumn(
-            text:
-                '${counterCloseData['AmountToBeCollected']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 6,
-            styles: PosStyles(align: PosAlign.right, bold: true)),
+            styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
 
-// ✅ Collected Cash & Cash Difference
       bytes += generator.row([
         PosColumn(text: 'Collected Cash:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['CollectedAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['CollectedAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Cash Difference:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['CashDifference']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['CashDifference']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
-// ✅ Final separator
       bytes += generator.text(generateSeparatorLine(48));
-      bytes += generator.feed(1); // Feeds 1 blank line
-// ✅ Table Rows - Fetching values from Provider dynamically
+
       bytes += generator.row([
         PosColumn(text: 'Credit Sales:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['CreditAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['CreditAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Credit Card Sales:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['CreditCardAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['CreditCardAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Online Sales:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['OnlineAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['OnlineAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Receipt Credit Card:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['ReceiptAmountCCard']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['ReceiptAmountCCard']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Voucher Sales:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['VoucherAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['VoucherAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Compliment Sales:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['ComplimentAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['ComplimentAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
         PosColumn(text: 'Cash Sales (Less Refund):', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['finalTotalCash']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['finalTotalCash']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
-        PosColumn(text: 'Total Discount Amount:', width: 6),
+        PosColumn(text: 'Total Discount:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['DiscountAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['DiscountAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
-      ]);
-
-// ✅ Full-width separator line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Total Sales - Bold & Important
-      bytes += generator.row([
-        PosColumn(
-            text: 'Total Sales:', width: 6, styles: PosStyles(bold: true)),
-        PosColumn(
-            text:
-                '${counterCloseData['TotalAmount']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 6,
-            styles: PosStyles(align: PosAlign.right, bold: true)),
-      ]);
-
-// ✅ Full-width separator line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Taxable Amount & Tax Amount
-      bytes += generator.row([
-        PosColumn(
-            text: 'Taxable Amount:', width: 6, styles: PosStyles(bold: true)),
-        PosColumn(
-            text:
-                '${counterCloseData['TaxableAmount']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 6,
-            styles: PosStyles(align: PosAlign.right, bold: true)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.row([
-        PosColumn(text: 'Tax Amount:', width: 6, styles: PosStyles(bold: true)),
+        PosColumn(text: 'Total Sales:', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(
-            text:
-                '${counterCloseData['TaxAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['TotalAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right, bold: true)),
-      ]);
-
-// ✅ Final separator
-      bytes += generator.text(generateSeparatorLine(48));
-
-      bytes += generator.feed(3); // Feeds 1 blank line
-// ✅ Bill Cancel Details Section
-      bytes += generator.text('Bill Cancel Details',
-          styles: PosStyles(bold: true, align: PosAlign.left));
-// ✅ Final separator
-      bytes += generator.text(generateSeparatorLine(48));
-      bytes += generator.feed(1); // Feeds 1 blank line
-// ✅ Table Header (Cancel Type | Amount)
-      bytes += generator.row([
-        PosColumn(text: 'Cancel Type', width: 6, styles: PosStyles(bold: true)),
-        PosColumn(
-            text: 'Amount',
-            width: 6,
-            styles: PosStyles(bold: true, align: PosAlign.right)),
-      ]);
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Bill Cancelled & Item Cancelled Data
-      bytes += generator.row([
-        PosColumn(text: 'Bill Cancelled', width: 6),
-        PosColumn(
-            text:
-                '${counterCloseData['billCancelledAmount']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
 
       bytes += generator.row([
-        PosColumn(text: 'Item Cancelled', width: 6),
+        PosColumn(text: 'Taxable Amount:', width: 6),
         PosColumn(
-            text:
-                '${counterCloseData['itemCancelledAmount']?.toStringAsFixed(2) ?? '0.00'}',
+            text: _amt(counterCloseData['TaxableAmount']),
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
-// ✅ Full-width separator line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ KOT Status Row
       bytes += generator.row([
+        PosColumn(text: 'Tax Amount:', width: 6),
         PosColumn(
-            text: 'KOT Status:',
+            text: _amt(counterCloseData['TaxAmount']),
             width: 6,
-            styles: PosStyles(bold: true, align: PosAlign.left)),
-        PosColumn(
-            text: 'PENDING',
-            width: 6,
-            styles: PosStyles(bold: true, align: PosAlign.right)),
-      ]);
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ KOT Table Header
-      bytes += generator.row([
-        PosColumn(text: 'KOT Number', width: 6, styles: PosStyles(bold: true)),
-        PosColumn(
-            text: 'Amount',
-            width: 6,
-            styles: PosStyles(bold: true, align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Fetch KOT List from Provider
-      List<dynamic> kotList =
-          counterCloseData['kotList'] ?? []; // Default empty list if null
-
-// ✅ Check if KOT List is Empty
-      if (kotList.isEmpty) {
-        bytes += generator.text('No KOT Data Available',
-            styles: PosStyles(align: PosAlign.center));
-      } else {
-        // ✅ Print KOT Numbers & Amounts (Using Actual Data)
-        // ✅ Print KOT Numbers & Amounts (Using Actual Data)
-        for (var kot in kotList) {
-          bytes += generator.row([
-            PosColumn(text: kot["kotNumber"].toString(), width: 6),
-            PosColumn(
-                text: double.tryParse(kot["amount"].toString())
-                        ?.toStringAsFixed(2) ??
-                    '0.00',
-                width: 6,
-                styles: PosStyles(align: PosAlign.right)),
-          ]);
-        }
-      }
-
-// ✅ Final Separator
+      bytes += generator.text('BILL COUNT',
+          styles: const PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.text(generateSeparatorLine(48));
 
-      // ✅ Bill Count Section
-      bytes += generator.text('Bill Count:', styles: PosStyles(bold: true));
-
-// ✅ Three-column layout (Width: 4+4+4 = 12)
       bytes += generator.row([
         PosColumn(
             text: 'Cash Bill: ${counterCloseData['CashBillCount'] ?? 0}',
-            width: 4),
+            width: 6),
         PosColumn(
             text:
                 'Credit Card: ${counterCloseData['CreditCardBillCount'] ?? 0}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.center)),
+            width: 6,
+            styles: const PosStyles(align: PosAlign.right)),
+      ]);
+      bytes += generator.row([
         PosColumn(
             text: 'Multi Pay: ${counterCloseData['MultiBillCount'] ?? 0}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.right)),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-            text: 'Credit Bill: ${counterCloseData['CreditBillCount'] ?? 0}',
             width: 6),
         PosColumn(
-            text: 'Compliment: ${counterCloseData['ComplimentBillCount'] ?? 0}',
+            text: 'Credit Bill: ${counterCloseData['CreditBillCount'] ?? 0}',
             width: 6,
-            styles: PosStyles(align: PosAlign.right)),
+            styles: const PosStyles(align: PosAlign.right)),
       ]);
-
-// ✅ Full-width separator line
-      bytes += generator.text(generateSeparatorLine(48));
-// ✅ CARD Sales Details Section
-      bytes += generator.text('CARD Sales Details',
-          styles: PosStyles(bold: true, align: PosAlign.center));
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Card Sales Table Header (3-column layout)
       bytes += generator.row([
-        PosColumn(text: 'CARD', width: 4, styles: PosStyles(bold: true)),
-        PosColumn(
-            text: 'BillCount',
-            width: 4,
-            styles: PosStyles(bold: true, align: PosAlign.center)),
-        PosColumn(
-            text: 'Amount',
-            width: 4,
-            styles: PosStyles(bold: true, align: PosAlign.right)),
-      ]);
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Fetch Card Sales Data from Provider
-      List<dynamic> creditCardSales = counterCloseData['creditCardSales'] ?? [];
-
-// ✅ Check if data is available
-      if (creditCardSales.isEmpty) {
-        bytes += generator.row([
-          PosColumn(
-              text: 'No Card Sales Data',
-              width: 12,
-              styles: PosStyles(align: PosAlign.center)),
-        ]);
-      } else {
-        // ✅ Print Each Card Entry
-        for (var card in creditCardSales) {
-          bytes += generator.row([
-            PosColumn(text: card["creditCardName"], width: 4),
-            PosColumn(
-                text: '${card["ccCount"]}',
-                width: 4,
-                styles: PosStyles(align: PosAlign.center)),
-            PosColumn(
-                text: double.tryParse(card["creditCardAmount"].toString())
-                        ?.toStringAsFixed(2) ??
-                    '0.00',
-                width: 4,
-                styles: PosStyles(align: PosAlign.right)),
-          ]);
-        }
-      }
-
-// ✅ Full-width separator line
-      bytes += generator.text(generateSeparatorLine(48));
-// ✅ ONLINE SALES DETAILS SECTION
-      bytes += generator.text('Online Sales Details',
-          styles: PosStyles(bold: true, align: PosAlign.center));
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Online Sales Table Header
-      bytes += generator.row([
-        PosColumn(
-            text: 'OnlineSource', width: 6, styles: PosStyles(bold: true)),
-        PosColumn(
-            text: 'BillCount',
-            width: 3,
-            styles: PosStyles(bold: true, align: PosAlign.center)),
-        PosColumn(
-            text: 'Amount',
-            width: 3,
-            styles: PosStyles(bold: true, align: PosAlign.right)),
-      ]);
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Dummy Online Sales Data (Replace this with actual data later)
-      List<dynamic> onlineSalesData =
-          counterCloseData['onlineSalesDetails'] ?? [];
-
-// ✅ Print Each Online Sales Entry
-      for (var sale in onlineSalesData) {
-        bytes += generator.row([
-          PosColumn(text: sale["onlineSourceName"], width: 6),
-          PosColumn(
-              text: '${sale["billCount"]}', // Bill Count as String
-              width: 3,
-              styles: PosStyles(align: PosAlign.center)),
-          PosColumn(
-              text: double.tryParse(sale["onlineAmount"].toString())
-                      ?.toStringAsFixed(2) ??
-                  '0.00',
-              width: 3,
-              styles: PosStyles(align: PosAlign.right)),
-        ]);
-      }
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Number of Customers
-      bytes += generator.row([
-        PosColumn(
-            text: 'No Of Customers:', width: 8, styles: PosStyles(bold: true)),
-        PosColumn(
-            text: '${counterCloseData['totalCustomers'] ?? 0}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.right)),
-      ]);
-
-// ✅ Separator Line
-      bytes += generator.text(generateSeparatorLine(48));
-
-// ✅ Return Amount & Return Bill Count
-      bytes += generator.row([
-        PosColumn(text: 'Return Amount:', width: 8),
         PosColumn(
             text:
-                '${counterCloseData['ReturnAmount']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.right)),
+                'Compliment: ${counterCloseData['ComplimentBillCount'] ?? 0}',
+            width: 6),
+        PosColumn(text: '', width: 6),
       ]);
 
-      bytes += generator.row([
-        PosColumn(text: 'Return Bill Count:', width: 8),
-        PosColumn(
-            text: '${counterCloseData['ReturnBillCount'] ?? 0}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.right)),
-      ]);
-
-// ✅ Refund Amount & Refund Bill Count
-      bytes += generator.row([
-        PosColumn(text: 'Refund Amount:', width: 8),
-        PosColumn(
-            text:
-                '${counterCloseData['RefundAmount2ndOne']?.toStringAsFixed(2) ?? '0.00'}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.right)),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(text: 'Refund Bill Count:', width: 8),
-        PosColumn(
-            text: '${counterCloseData['Refund2ndBillCount'] ?? 0}',
-            width: 4,
-            styles: PosStyles(align: PosAlign.right)),
-      ]);
-
-// ✅ Full-width separator line
       bytes += generator.text(generateSeparatorLine(48));
+      bytes += generator.text('${widget.Type} — End',
+          styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.feed(2);
+      bytes += generator.cut();
 
-      bytes += generator.row([
-        PosColumn(
-            text: 'Cashier',
-            width: 6,
-            styles: PosStyles(align: PosAlign.center)),
-        PosColumn(
-            text: 'Supervisor',
-            width: 6,
-            styles: PosStyles(align: PosAlign.center)),
-      ]);
-
-      // ✅ Cashier & Supervisor Section
-      bytes += generator.row([
-        PosColumn(
-            text: '----------------------',
-            width: 6,
-            styles: PosStyles(align: PosAlign.center)),
-        PosColumn(
-            text: '----------------------',
-            width: 6,
-            styles: PosStyles(align: PosAlign.center)),
-      ]);
-
-// ✅ Remarks Section
-      bytes += generator.text('Remarks:', styles: PosStyles(bold: true));
-
-// ✅ Full-width separator line
-      bytes += generator.text(generateSeparatorLine(48));
-      // ✅ Auto Feed & Cut
-      bytes += generator.feed(3); // Feeds 3 blank lines before cutting
-      bytes += generator.cut(); // Auto-cut the receipt
-
-      // ✅ Send to Printer
       await printerManager.connect(
         type: selectedPrinter!.typePrinter,
         model: UsbPrinterInput(
@@ -794,17 +507,30 @@ class _PrintPageState extends ConsumerState<PrintPage> {
           vendorId: selectedPrinter!.vendorId,
         ),
       );
+      await printerManager.send(
+          type: selectedPrinter!.typePrinter, bytes: bytes);
 
-      printerManager.send(type: PrinterType.usb, bytes: bytes);
-    } catch (e) {
-      log('Error printing receipt: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error printing receipt: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.Type} printed'),
+            backgroundColor: const Color(0xFF521C1D),
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e, st) {
+      log('Counter close print error: $e', stackTrace: st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Print failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-    ;
   }
-
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
@@ -814,7 +540,6 @@ class _PrintPageState extends ConsumerState<PrintPage> {
     );
   }
 }
-
 class BluetoothPrinter {
   String? deviceName;
   String? vendorId;

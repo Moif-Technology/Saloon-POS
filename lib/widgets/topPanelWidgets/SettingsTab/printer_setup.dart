@@ -101,15 +101,15 @@ Widget build(BuildContext context) {
           headingRowColor: WidgetStateProperty.all(Colors.grey[200]),
           columns: [
             DataColumn(label: Text('Counter No', style: _tableHeaderStyle())),
-            DataColumn(label: Text('Kitchen Loc Name', style: _tableHeaderStyle())),
+            DataColumn(label: Text('Service Loc Name', style: _tableHeaderStyle())),
             DataColumn(label: Text('Printer Name', style: _tableHeaderStyle())),
           ],
           rows: [
             DataRow(
               cells: [
                 DataCell(Text('1')),
-                DataCell(Text('MAIN KITCHEN', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF521C1D)))),
-                DataCell(Text('KITCHEN')),
+                DataCell(Text('MAIN STATION', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF521C1D)))),
+                DataCell(Text('STATION')),
               ],
             ),
             DataRow(
@@ -146,17 +146,17 @@ Widget build(BuildContext context) {
         ),
         const SizedBox(height: 6),
         Text(
-          'SEPARATE KOT PRINTER FOR DELIVERY-ID will be (98)',
+          'SEPARATE JOB PRINTER FOR DELIVERY-ID will be (98)',
           style: TextStyle(color: Colors.grey[700], height: 1.45),
         ),
         const SizedBox(height: 6),
         Text(
-          'DUPLICATE KOT PRINTER-ID will be (97)',
+          'DUPLICATE JOB PRINTER-ID will be (97)',
           style: TextStyle(color: Colors.grey[700], height: 1.45),
         ),
         const SizedBox(height: 6),
         Text(
-          'Separate KOT PRINTER for TakeAway-ID will be (96)',
+          'Separate JOB PRINTER for TakeAway-ID will be (96)',
           style: TextStyle(color: Colors.grey[700], height: 1.45),
         ),
       ],

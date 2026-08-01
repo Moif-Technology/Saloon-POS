@@ -131,7 +131,7 @@ production tunnel via api/.env); `.env.production` → `https://api.moifone.com`
 | D2 | Booking | Walk-in first. `appointment_id` + `start_time`/`end_time` exist so booking is additive later |
 | D3 | Backend shape | `api/src/pos/salon/` mounted at `/api/salon-pos`, **reusing** restaurant controllers for auth/params/privileges rather than forking 1,950 lines |
 | D4 | Stylist | Job-level `primary_stylist_id` that lines inherit, overridable per line |
-| D5 | Job tables | **New** `ops.salon_job_master` / `salon_job_child` with composite `(company_id, job_id)` keys — NOT reusing `ops.kot_master`, and NOT reusing `garage.job_card_*` (see D6) |
+| D5 | Job tables | **New** `ops.job_master` / `job_child` with composite `(company_id, job_id)` keys — NOT reusing `ops.kot_master`, and NOT reusing `garage.job_card_*` (see D6) |
 | D6 | Garage job cards rejected | `garage.job_card_child` has **no `product_id`, no `qty`, no tax columns**, and `reg_no` + `workshop_id` are NOT NULL — it models vehicle labour, cannot represent a retail line, and has **no FK to its master**. Reusing it would mean a vehicle registration on every haircut. Both tables are empty (0 rows), so there is no data to inherit either. |
 
 **Why D5:** `ops.kot_master`'s PK is `kot_master_id` alone, but ids are allocated
@@ -301,8 +301,8 @@ sends: `pos.kot_join_split`, `pos.item_cancel`, `pos.cash_payment`,
 
 `POST /api/salon-pos/sales/settle`, gated on `requireFeature('pos.settlement')`.
 
-- **Migration 105** adds `ops.sales_master.salon_job_id` and
-  `ops.salon_job_master.sales_id` (composite FKs, both directions), a partial
+- **Migration 105** adds `ops.sales_master.job_id` and
+  `ops.job_master.sales_id` (composite FKs, both directions), a partial
   unique index so one job can only ever make one bill, a domain check on
   `sales_child.line_type`, and `ix_sales_child_stylist` for commission reports.
   Applied to **local and production**. A `.down.sql` exists.

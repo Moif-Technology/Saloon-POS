@@ -207,7 +207,7 @@ class _SalesViewerPrintingState extends ConsumerState<SalesViewerPrinting> {
     bytes += generator.imageRaster(dualLangTitle, align: PosAlign.center);
     bytes += generator.text(generateSeparatorLine(48));
 
-    bytes += generator.text('KOT : $supplyType');
+    bytes += generator.text('Job : $supplyType');
     bytes += generator.text(generateSeparatorLine(48));
 
     final formattedDate =

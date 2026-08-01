@@ -543,7 +543,7 @@ class _ProductMasterDetailsDialogState
         await ApiService()
             .updateProduct(widget.uniqueMultiProductID.trim(), payload);
       } else {
-        await ApiService().createProduct(payload);
+      await ApiService().createProduct(payload);
       }
       if (!mounted) return;
       QuickAlert.show(
@@ -584,11 +584,11 @@ class _ProductMasterDetailsDialogState
       child: SizedBox(
         width: dialogW,
         height: dialogH,
-        child: Column(
-          children: [
+          child: Column(
+            children: [
             _header(),
             _tabBar(),
-            Expanded(
+              Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _loadError != null
@@ -610,63 +610,63 @@ class _ProductMasterDetailsDialogState
   }
 
   Widget _header() {
-    return Container(
+  return Container(
       constraints: const BoxConstraints(minHeight: 58),
-      decoration: const BoxDecoration(
+    decoration: const BoxDecoration(
         color: _maroon,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      padding: const EdgeInsets.only(left: 20, right: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    padding: const EdgeInsets.only(left: 20, right: 8),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
               _isEdit ? 'Edit Product' : 'Add New Product',
-              style: const TextStyle(
+            style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
+              color: Colors.white,
             ),
           ),
+        ),
           if (_isEdit)
-            Container(
+          Container(
               margin: const EdgeInsets.only(right: 8),
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
+            decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                'ID ${widget.uniqueMultiProductID}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
+              borderRadius: BorderRadius.circular(20),
             ),
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close, color: Colors.white, size: 24),
-              tooltip: 'Close',
+            child: Text(
+                'ID ${widget.uniqueMultiProductID}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                  fontSize: 13,
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        SizedBox(
+            width: 48,
+            height: 48,
+          child: IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, color: Colors.white, size: 24),
+            tooltip: 'Close',
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _tabBar() {
     const tabs = ['General', 'Stock & Supplier', 'Pricing'];
-    return Container(
+  return Container(
       color: const Color(0xFFFCFBFB),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: Row(
+    child: Row(
         children: List.generate(tabs.length, (i) {
           final selected = _tab == i;
           return Expanded(
@@ -694,24 +694,24 @@ class _ProductMasterDetailsDialogState
                         fontWeight: FontWeight.w700,
                         color: selected ? Colors.white : _maroon,
                       ),
-                    ),
-                  ),
-                ),
+            ),
+          ),
+        ),
               ),
             ),
           );
         }),
-      ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _errorBody() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
             const Icon(Icons.error_outline, size: 48, color: Colors.red),
             const SizedBox(height: 12),
             Text(_loadError!, textAlign: TextAlign.center),
@@ -721,9 +721,9 @@ class _ProductMasterDetailsDialogState
               style: ElevatedButton.styleFrom(backgroundColor: _maroon),
               child: const Text('Retry', style: TextStyle(color: Colors.white)),
             ),
-          ],
-        ),
-      ),
+                            ],
+                          ),
+                        ),
     );
   }
 
@@ -735,7 +735,7 @@ class _ProductMasterDetailsDialogState
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
       child: Row(
-        children: [
+                      children: [
           SizedBox(
             height: 52,
             child: OutlinedButton.icon(
@@ -779,9 +779,9 @@ class _ProductMasterDetailsDialogState
                     borderRadius: BorderRadius.circular(10)),
               ),
             ),
-          ),
-        ],
-      ),
+                    ),
+                  ],
+                ),
     );
   }
 
@@ -801,11 +801,11 @@ class _ProductMasterDetailsDialogState
               border: Border.all(color: const Color(0xFFFECACA)),
             ),
             child: Row(
-              children: [
+                      children: [
                 const Icon(Icons.error_outline,
                     color: Color(0xFFDC2626), size: 22),
                 const SizedBox(width: 10),
-                Expanded(
+                        Expanded(
                   child: Text(
                     _formError!,
                     style: const TextStyle(
@@ -814,9 +814,9 @@ class _ProductMasterDetailsDialogState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
-              ],
-            ),
+                        ),
+                      ],
+                    ),
           ),
         ],
         _section('Product Identity', [
@@ -939,7 +939,7 @@ class _ProductMasterDetailsDialogState
   Widget _stockTab(bool wide) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+                      children: [
         _section('Stock Controls', [
           _row(wide, [
             _choiceField(
@@ -1052,7 +1052,7 @@ class _ProductMasterDetailsDialogState
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+                          children: [
           Text(
             title,
             style: const TextStyle(
@@ -1075,7 +1075,7 @@ class _ProductMasterDetailsDialogState
   Widget _row(bool wide, List<Widget> kids) {
     if (!wide) {
       return Column(
-        children: [
+                          children: [
           for (var i = 0; i < kids.length; i++) ...[
             if (i > 0) const SizedBox(height: _gap),
             kids[i],
@@ -1085,7 +1085,7 @@ class _ProductMasterDetailsDialogState
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+                          children: [
         for (var i = 0; i < kids.length; i++) ...[
           if (i > 0) const SizedBox(width: _gap),
           Expanded(child: kids[i]),
@@ -1099,7 +1099,7 @@ class _ProductMasterDetailsDialogState
     assert(kids.length == 3);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+                          children: [
         for (var i = 0; i < 3; i++) ...[
           if (i > 0) const SizedBox(width: _gap),
           Expanded(child: kids[i]),
@@ -1111,14 +1111,14 @@ class _ProductMasterDetailsDialogState
   Widget _barcodeField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+                          children: [
         const Text('Barcode',
             style: TextStyle(
                 fontSize: 13, fontWeight: FontWeight.w600, color: _muted)),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
+                        Row(
+                          children: [
+                            Expanded(
               child: SizedBox(
                 height: _fieldH,
                 child: TextField(
@@ -1163,10 +1163,10 @@ class _ProductMasterDetailsDialogState
                   style: const TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 14),
                 ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -1185,7 +1185,7 @@ class _ProductMasterDetailsDialogState
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+                  children: [
         Text(
           label,
           style: TextStyle(
@@ -1197,7 +1197,7 @@ class _ProductMasterDetailsDialogState
         const SizedBox(height: 6),
         SizedBox(
           height: maxLines > 1 ? null : _fieldH,
-          child: TextField(
+                      child: TextField(
             controller: ctrl,
             focusNode: focusNode,
             readOnly: readOnly,
@@ -1264,9 +1264,9 @@ class _ProductMasterDetailsDialogState
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: borderColor),
-      ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _choiceField(
     String label,
@@ -1286,7 +1286,7 @@ class _ProductMasterDetailsDialogState
           height: _fieldH,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
+      decoration: BoxDecoration(
               color: _fieldBg,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _border),
@@ -1399,11 +1399,11 @@ class _ProductMasterDetailsDialogState
                 ),
               ),
             ),
-          ),
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   Widget _subGroupPicker() {
     return Column(
@@ -1417,7 +1417,7 @@ class _ProductMasterDetailsDialogState
           height: _fieldH,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
+      decoration: BoxDecoration(
               color: _fieldBg,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _border),
@@ -1429,8 +1429,8 @@ class _ProductMasterDetailsDialogState
                         _subGroupId)
                     ? _subGroupId
                     : null,
-                isExpanded: true,
-                hint: Text(
+        isExpanded: true,
+        hint: Text(
                   _groupId == null ? 'Select group first' : '— select —',
                   style: const TextStyle(
                       fontSize: 15, color: Color(0xFF9CA3AF)),

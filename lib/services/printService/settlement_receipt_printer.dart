@@ -108,7 +108,15 @@ class SettlementReceiptPrinter {
     required int currencyDecimals,
   }) async {
     final billNo = result['billNo']?.toString() ?? '';
-    final paidAmount = (result['paidAmount'] as num?)?.toDouble() ?? 0.0;
+    final jobNo = (result['jobNo'] ??
+            orderData['jobNo'] ??
+            orderData['JobNo'] ??
+            '')
+        .toString()
+        .trim();
+    final paidAmount = (result['paidAmount'] as num?)?.toDouble() ??
+        (orderData['paidAmount'] as num?)?.toDouble() ??
+        0.0;
     final balancePaid = (result['balancePaid'] as num?)?.toDouble() ?? 0.0;
     final paymentMode =
         result['paymentMode']?.toString().toUpperCase() ?? 'CASH';
@@ -124,22 +132,77 @@ class SettlementReceiptPrinter {
     final tax1Rate = (orderData['tax1Rate'] as num?)?.toDouble() ??
         (orderData['tax1RateM'] as num?)?.toDouble() ?? 0.0;
 
+    final rawSplits = result['paymentSplits'] ?? orderData['paymentSplits'];
+    final List<Map<String, dynamic>> paymentSplits = [];
+    if (rawSplits is List) {
+      for (final s in rawSplits) {
+        if (s is! Map) continue;
+        final mode = (s['payMode'] ?? s['PayMode'] ?? '').toString().trim();
+        final amount = (s['amount'] as num?)?.toDouble() ??
+            (s['billAmount'] as num?)?.toDouble() ??
+            double.tryParse('${s['amount'] ?? s['billAmount'] ?? ''}') ??
+            0.0;
+        if (mode.isEmpty || amount <= 0) continue;
+        paymentSplits.add({'payMode': mode.toUpperCase(), 'amount': amount});
+      }
+    }
+
     final items = List<Map<String, dynamic>>.from(orderData['items'] ?? []);
     final counterNo = orderData['counterNo']?.toString() ?? '';
     final orderNo = (orderData['kotPrefix']?.toString() ?? '') +
         (orderData['kotNumber']?.toString() ?? '');
-    final orderNoDisplay =
-        orderNo.isNotEmpty ? orderNo : (orderData['kotId']?.toString() ?? '--');
-    final orderType =
-        orderData['orderType']?.toString().toUpperCase() ?? 'DINE IN';
+    final orderNoDisplay = jobNo.isNotEmpty
+        ? jobNo
+        : (orderNo.isNotEmpty
+            ? orderNo
+            : (orderData['kotId']?.toString() ?? '--'));
     final tableName = orderData['tableName']?.toString() ??
-        orderData['tableId']?.toString() ?? '-';
+        orderData['chairName']?.toString() ??
+        orderData['tableId']?.toString() ??
+        '-';
     final waiterName = orderData['waiterName']?.toString() ??
-        orderData['waiterId']?.toString() ?? '-';
+        orderData['stylistName']?.toString() ??
+        orderData['waiterId']?.toString() ??
+        '-';
     final cashierName = orderData['cashierName']?.toString() ??
         SessionManager().staffName ??
         'CASHIER';
-    final comments = orderData['comments']?.toString() ?? '0';
+    final comments = orderData['comments']?.toString() ?? '';
+    final printCustomerName = customerName.trim().isNotEmpty
+        ? customerName.trim()
+        : (orderData['customerName'] ?? orderData['CustomerName'] ?? '')
+            .toString()
+            .trim();
+    final customerCode = (orderData['customerCode'] ??
+            orderData['CustomerCode'] ??
+            '')
+        .toString()
+        .trim();
+    final customerMobile = (orderData['mobileNo'] ??
+            orderData['MobileNo'] ??
+            orderData['telephone'] ??
+            '')
+        .toString()
+        .trim();
+    final customerAddress =
+        (orderData['address'] ?? orderData['Address'] ?? '').toString().trim();
+    final customerTrn =
+        (orderData['taxRegNo'] ?? orderData['CustTRN'] ?? '').toString().trim();
+    final customerId = (orderData['customerId'] ??
+            orderData['CustomerID'] ??
+            result['customerId'] ??
+            '')
+        .toString()
+        .trim();
+    final nameLower = printCustomerName.toLowerCase();
+    final isWalkIn = customerId.isEmpty ||
+        customerId == '0' ||
+        nameLower.isEmpty ||
+        nameLower == 'walk-in' ||
+        nameLower == 'walkin' ||
+        nameLower == 'walk in' ||
+        nameLower == 'cash customer' ||
+        nameLower == 'select customer';
 
     final profile = await CapabilityProfile.load(name: 'XP-N160I');
     final generator = Generator(PaperSize.mm80, profile);
@@ -152,31 +215,60 @@ class SettlementReceiptPrinter {
     bytes += generator.text(_sep, styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text('  Tax Invoice',
         styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text('  فاتورة ضريبية',
+        styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text(_sep, styles: const PosStyles(align: PosAlign.center));
-
-    bytes += generator.text('OrderNo : $orderNoDisplay    $orderType',
-        styles: const PosStyles(bold: true));
-    bytes += generator.text(_sep, styles: const PosStyles(align: PosAlign.center));
-
-    bytes += generator.text('Inv No #    $billNo', styles: const PosStyles(bold: true));
-    bytes += generator.text('Inv Date : $dateStr $timeStr',
-        styles: const PosStyles(bold: true));
 
     bytes += generator.row([
-      PosColumn(text: 'Cntr: $counterNo', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'BILL # : $billNo', width: 6, styles: const PosStyles(bold: true)),
       PosColumn(
-          text: 'Cashier : $cashierName',
+          text: '$dateStr $timeStr',
+          width: 6,
+          styles: const PosStyles(bold: true, align: PosAlign.right)),
+    ]);
+    if (orderNoDisplay.isNotEmpty && orderNoDisplay != '--') {
+      bytes += generator.text('JOB #  : $orderNoDisplay',
+          styles: const PosStyles(bold: true));
+    }
+
+    bytes += generator.row([
+      PosColumn(text: 'COUNTER : $counterNo', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(
+          text: 'CASHIER : $cashierName',
           width: 6,
           styles: const PosStyles(bold: true, align: PosAlign.right)),
     ]);
     bytes += generator.row([
-      PosColumn(text: 'Table : $tableName', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'CHAIR : $tableName', width: 6, styles: const PosStyles(bold: true)),
       PosColumn(
-          text: 'Waiter : $waiterName',
+          text: 'STYLIST : $waiterName',
           width: 6,
           styles: const PosStyles(bold: true, align: PosAlign.right)),
     ]);
-    bytes += generator.text('Comments : $comments', styles: const PosStyles(bold: true));
+    if (!isWalkIn) {
+      bytes += generator.text(_sep, styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text('Customer : $printCustomerName',
+          styles: const PosStyles(bold: true));
+      if (customerCode.isNotEmpty) {
+        bytes += generator.text('Code     : $customerCode',
+            styles: const PosStyles(bold: true));
+      }
+      if (customerTrn.isNotEmpty) {
+        bytes += generator.text('TRN      : $customerTrn',
+            styles: const PosStyles(bold: true));
+      }
+      if (customerMobile.isNotEmpty) {
+        bytes += generator.text('Tel      : $customerMobile',
+            styles: const PosStyles(bold: true));
+      }
+      if (customerAddress.isNotEmpty) {
+        bytes += generator.text('Address  : $customerAddress',
+            styles: const PosStyles(bold: true));
+      }
+    }
+    if (comments.isNotEmpty && comments != '0') {
+      bytes += generator.text('Comments : $comments', styles: const PosStyles(bold: true));
+    }
     bytes += generator.text(_sep, styles: const PosStyles(align: PosAlign.center));
 
     bytes += generator.text('Description    Qty  Price  Total',
@@ -233,6 +325,18 @@ class SettlementReceiptPrinter {
     bytes += generator.text(_sep, styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text('Settlement : $paymentMode',
         styles: const PosStyles(bold: true));
+    for (final s in paymentSplits) {
+      bytes += generator.row([
+        PosColumn(
+            text: s['payMode'].toString(),
+            width: 6,
+            styles: const PosStyles(bold: true)),
+        PosColumn(
+            text: (s['amount'] as num).toStringAsFixed(currencyDecimals),
+            width: 6,
+            styles: const PosStyles(bold: true, align: PosAlign.right)),
+      ]);
+    }
 
     bytes += generator.row([
       PosColumn(text: 'Items : ${items.length}', width: 6),

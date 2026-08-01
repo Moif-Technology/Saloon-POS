@@ -17,7 +17,7 @@ class _POSSettingsDialogState extends ConsumerState<POSSettingsDialog> {
   final List<String> tabs = [
     'Company Details',
     'Main Form',
-    'KOT',
+    'Job',
     'Bill',
     'Mail Sending',
     'General',
@@ -516,8 +516,8 @@ class _MainFormTab extends StatelessWidget {
                               '0-Item Name, 1-Barcode'),
                           _buildLabeledField('Default Area Name', '1',
                               '0-No Default, 1-TakeAway as Default'),
-                          _buildLabeledField('Clear After KOT Save', '1',
-                              '0-Not Clear KOT, 1-Clear KOT Values'),
+                          _buildLabeledField('Clear After Job Save', '1',
+                              '0-Not Clear Job, 1-Clear Job Values'),
                           _buildLabeledField(
                               'Credit Card Popup', '0', '0-Not Show, 1-Show'),
                         ],
@@ -593,7 +593,7 @@ _buildBox(
                             ),
                           ),
                           const SizedBox(height: 8),
-                          _buildLabeledField('ItemCancel KOT Print', '0',
+                          _buildLabeledField('ItemCancel Job Print', '0',
                               '0-Print, 1-No Print'),
                           _buildLabeledField(
                               'AllowPriceChange for ZeroPriceItems',
@@ -610,9 +610,9 @@ _buildBox(
   Column(
     children: [
       _buildLabeledField(
-        'Save KOT on Settlement',
+        'Save Job on Settlement',
         '1.0000',
-        '0-Nothing, 1-Save KOT',
+        '0-Nothing, 1-Save Job',
       ),
       _buildLabeledField(
         'Enable Online Payment',
@@ -873,20 +873,20 @@ class _KOTTab extends StatelessWidget {
                   children: [
                     // KOT General Settings Box
                     _buildBox(
-                      'KOT General Settings',
+                      'Job General Settings',
                       Column(
                         children: [
-                          _buildLabeledField('KOT Language', '0',
+                          _buildLabeledField('Job Language', '0',
                               '0-English, 1-Arabic, 2-English and Arabic'),
                           _buildLabeledField(
-                              'KOT Heading Font Size', '0', 'eg: 14'),
+                              'Job Heading Font Size', '0', 'eg: 14'),
                           _buildLabeledField(
-                              'KOT Print Item Font Size', '13', 'eg: 16'),
+                              'Job Print Item Font Size', '13', 'eg: 16'),
                           _buildLabeledField('Same Items on MultiLines', '0',
                               '0-Same Line, 1-MultiLine'),
-                          _buildLabeledField('KOT Price Print', '0.0000',
+                          _buildLabeledField('Job Price Print', '0.0000',
                               '0-With Out Price, 1-With Price'),
-                          _buildLabeledField('Print Duplicate KOT', '0',
+                          _buildLabeledField('Print Duplicate Job', '0',
                               '0-No Print, 1-Print'),
                           _buildLabeledField(
                               'Delivery Default Customer', 'CASH CUSTOMER', ''),
@@ -907,7 +907,7 @@ class _KOTTab extends StatelessWidget {
                       Column(
                         children: [
                           _buildLabeledField('Kitchen Dummy Bill', '0',
-                              '0-Only KOT, 1-KOT with Dummy Bill'),
+                              '0-Only Job, 1-Job with Dummy Bill'),
                           const SizedBox(height: 8),
                           _buildCheckboxRow(),
                           const SizedBox(height: 16),
@@ -924,29 +924,29 @@ class _KOTTab extends StatelessWidget {
               // Right Column (Full Height Box)
               Expanded(
                 child: _buildBox(
-                  'KOT Print & Save Settings',
+                  'Job Print & Save Settings',
                   Column(
                     children: [
-                      _buildLabeledField('KOT Print All Items', '0',
+                      _buildLabeledField('Job Print All Items', '0',
                           '0-Not All Items, 1-All Items'),
-                      _buildLabeledField('IsKOT Print for TakeAway', '0',
+                      _buildLabeledField('Is Job Print for TakeAway', '0',
                           '0-Print, 1-No Print'),
-                      _buildLabeledField('IsKOT Print for Delivery', '0',
+                      _buildLabeledField('Is Job Print for Delivery', '0',
                           '0-Print, 1-No Print'),
                       _buildLabeledField(
-                          'IsKOT Print for DineIn', '0', '0-Print, 1-No Print'),
-                      _buildLabeledField('KOT Print on Direct Settlement', '0',
+                          'Is Job Print for DineIn', '0', '0-Print, 1-No Print'),
+                      _buildLabeledField('Job Print on Direct Settlement', '0',
                           '0-No Print, 1-Print'),
-                      _buildLabeledField('Print Delivery KOT Separately', '0',
+                      _buildLabeledField('Print Delivery Job Separately', '0',
                           '0-Not Separate, 1-Separate'),
-                      _buildLabeledField('Print TakeAway KOT Separately', '0',
+                      _buildLabeledField('Print TakeAway Job Separately', '0',
                           '0-Not Separate, 1-Separate'),
                       const SizedBox(height: 16),
-                      _buildLabeledField('Print Dummy Bill on Save KOT Print',
+                      _buildLabeledField('Print Dummy Bill on Save Job Print',
                           '0', '0-No Print, 1-Dummy Bill'),
                       _buildLabeledField(
-                          'Save KOT Print', '1.0000', '0-No Print, 1-Print'),
-                      _buildLabeledField('Settlement KOT Print', '1.0000',
+                          'Save Job Print', '1.0000', '0-No Print, 1-Print'),
+                      _buildLabeledField('Settlement Job Print', '1.0000',
                           '0-No Print, 1-Print'),
                     ],
                   ),
@@ -1364,9 +1364,9 @@ return SingleChildScrollView(
             const SizedBox(height: 8),
             _buildLabeledField('IsEnableRoundOff', '0', '0 - Not Enable, 1 - Enable'),
             const SizedBox(height: 8),
-            _buildLabeledField('IsPendingKOTCheck', '0', '0 - Not Enable, 1 - Enable'),
+            _buildLabeledField('IsPendingJobCheck', '0', '0 - Not Enable, 1 - Enable'),
             const SizedBox(height: 8),
-            _buildLabeledField('IsDeliveryPrintOnKOTSave', '0', '0 - No, 1 - Set'),
+            _buildLabeledField('IsDeliveryPrintOnJobSave', '0', '0 - No, 1 - Set'),
             const SizedBox(height: 8),
             _buildLabeledField('CheckCounterCloseOnReports', '0', '0 - No, 1 - Set'),
           ],

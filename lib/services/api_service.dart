@@ -396,15 +396,33 @@ class ApiService {
     };
   }
 
-  /// Fetches products for the POS product grid.
-  /// Pass [groupId] to filter by group, [subGroupId] to further filter by sub-group.
-  Future<List<dynamic>> fetchProducts(
-      {String? groupId, String? subGroupId}) async {
+  /// Fetches products for the POS product grid / search.
+  /// Pass [groupId]/[subGroupId] for grid filters, [search] for name lookup,
+  /// [barcode] / [productCode] for exact code scan.
+  Future<List<dynamic>> fetchProducts({
+    String? groupId,
+    String? subGroupId,
+    String? search,
+    String? barcode,
+    String? productCode,
+    int? limit,
+  }) async {
     final headers = _bearerHeaders();
     final qp = <String, String>{'branchId': '${_branchId()}'};
     if (groupId != null && groupId.isNotEmpty) qp['groupId'] = groupId;
-    if (subGroupId != null && subGroupId.isNotEmpty)
+    if (subGroupId != null && subGroupId.isNotEmpty) {
       qp['subGroupId'] = subGroupId;
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      qp['search'] = search.trim();
+    }
+    if (barcode != null && barcode.trim().isNotEmpty) {
+      qp['barcode'] = barcode.trim();
+    }
+    if (productCode != null && productCode.trim().isNotEmpty) {
+      qp['productCode'] = productCode.trim();
+    }
+    if (limit != null && limit > 0) qp['limit'] = '$limit';
     final uri = Uri.parse('$baseURL/api/products').replace(queryParameters: qp);
     final response = await http.get(uri, headers: headers);
     if (response.statusCode == 401) throw Exception('Unauthorized.');
@@ -617,6 +635,32 @@ class ApiService {
     final msg = decoded is Map && decoded['message'] != null
         ? decoded['message'].toString()
         : 'Failed to update customer (${response.statusCode})';
+    throw Exception(msg);
+  }
+
+  /// POST `/api/salon-pos/supervisor/verify` — Admin/Supervisor password check.
+  Future<Map<String, dynamic>> verifySupervisor({
+    required String username,
+    required String password,
+  }) async {
+    final headers = _bearerHeaders();
+    final response = await http.post(
+      Uri.parse('$baseURL$posBasePath/supervisor/verify'),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({'username': username, 'password': password}),
+    );
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode == 200 && decoded is Map && decoded['ok'] == true) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map && decoded['message'] != null
+        ? decoded['message'].toString()
+        : 'Supervisor approval failed (${response.statusCode})';
     throw Exception(msg);
   }
 
@@ -859,14 +903,29 @@ class ApiService {
     throw Exception(msg);
   }
 
-  /// Returns open (unsettled) KOT list for Order List screen.
-  /// Optional [areaId] and [search] (KOT number prefix/number search).
-  Future<List<Map<String, dynamic>>> fetchOrderList(
-      {String? areaId, String? search}) async {
+  /// Returns open (unsettled) jobs for Job List.
+  /// Filters: [jobNo], [customerName], [mobile], [dateFrom]/[dateTo] (yyyy-MM-dd),
+  /// or combined [search].
+  Future<List<Map<String, dynamic>>> fetchOrderList({
+    String? areaId,
+    String? search,
+    String? jobNo,
+    String? customerName,
+    String? mobile,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
     final headers = _bearerHeaders();
     final params = <String, String>{};
     if (areaId != null && areaId.isNotEmpty) params['areaId'] = areaId;
     if (search != null && search.isNotEmpty) params['search'] = search;
+    if (jobNo != null && jobNo.isNotEmpty) params['jobNo'] = jobNo;
+    if (customerName != null && customerName.isNotEmpty) {
+      params['customerName'] = customerName;
+    }
+    if (mobile != null && mobile.isNotEmpty) params['mobile'] = mobile;
+    if (dateFrom != null && dateFrom.isNotEmpty) params['dateFrom'] = dateFrom;
+    if (dateTo != null && dateTo.isNotEmpty) params['dateTo'] = dateTo;
     final uri = Uri.parse('$baseURL$posBasePath/job/list')
         .replace(queryParameters: params.isEmpty ? null : params);
     final response = await http.get(uri, headers: headers);
@@ -898,15 +957,16 @@ class ApiService {
     }
     if (response.statusCode != 200) {
       throw Exception(
-          'Failed to load KOT: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+          'Failed to load job: ${response.body.isNotEmpty ? response.body : response.statusCode}');
     }
     final decoded = _decode(response.body);
-    if (decoded is! Map) throw FormatException('KOT: expected object');
+    if (decoded is! Map) throw FormatException('Job: expected object');
     return Map<String, dynamic>.from(decoded as Map);
   }
 
-  /// Persists settlement: `ops.sales_master`, `sales_child`, `sales_payment_split`; marks KOT settled.
-  /// [payload] = orderData from POS + `paidAmount`, `paymentMode` (CASH | CREDITCARD).
+  /// Persists settlement: sales_master + sales_child + payment splits;
+  /// then deletes the salon job. Modes: CASH, CREDITCARD, CREDIT,
+  /// MULTIPAYMENT, ONLINE, COMPLIMENT.
   Future<Map<String, dynamic>> saveSettlement(
       Map<String, dynamic> payload) async {
     final headers = _bearerHeaders();
@@ -959,5 +1019,245 @@ class ApiService {
             ? response.body
             : 'Settlement failed (HTTP ${response.statusCode})');
     throw Exception(msg);
+  }
+
+  /// Credit customers with outstanding balance (settlement receipts).
+  Future<List<Map<String, dynamic>>> fetchCreditSettlementCustomers({
+    String? search,
+    int limit = 200,
+  }) async {
+    final headers = _bearerHeaders();
+    final qp = <String, String>{'limit': '${limit.clamp(1, 200)}'};
+    final q = search?.trim() ?? '';
+    if (q.isNotEmpty) qp['q'] = q;
+    final uri = Uri.parse('$baseURL$posBasePath/settlement/credit-customers')
+        .replace(queryParameters: qp);
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load credit customers: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) return [];
+    final list = decoded['customers'];
+    if (list is! List) return [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Outstanding credit bills for a customer.
+  Future<Map<String, dynamic>> fetchCustomerOutstandingBills(
+      String customerId) async {
+    final headers = _bearerHeaders();
+    final uri = Uri.parse(
+        '$baseURL$posBasePath/settlement/customers/${Uri.encodeComponent(customerId)}/bills');
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load outstanding bills: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) throw const FormatException('Expected object');
+    return Map<String, dynamic>.from(decoded as Map);
+  }
+
+  /// Save credit receipt settlement (cash/card against O/S).
+  Future<Map<String, dynamic>> saveCreditSettlement({
+    required dynamic customerId,
+    required double amount,
+    required String paymentMode,
+    int counterNo = 1,
+  }) async {
+    final headers = _bearerHeaders();
+    final response = await http.post(
+      Uri.parse('$baseURL$posBasePath/settlement/save'),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'customerId': customerId,
+        'amount': amount,
+        'paymentMode': paymentMode,
+        'counterNo': counterNo,
+      }),
+    );
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map && decoded['message'] != null
+        ? decoded['message'].toString()
+        : 'Credit settlement failed (${response.statusCode})';
+    throw Exception(msg);
+  }
+
+  /// Credit settlement history.
+  Future<List<Map<String, dynamic>>> fetchCreditSettlementHistory({
+    String? customerId,
+    String? dateFrom,
+    String? dateTo,
+    int limit = 150,
+  }) async {
+    final headers = _bearerHeaders();
+    final qp = <String, String>{'limit': '$limit'};
+    if (customerId != null && customerId.isNotEmpty) {
+      qp['customerId'] = customerId;
+    }
+    if (dateFrom != null && dateFrom.isNotEmpty) qp['dateFrom'] = dateFrom;
+    if (dateTo != null && dateTo.isNotEmpty) qp['dateTo'] = dateTo;
+    final uri = Uri.parse('$baseURL$posBasePath/settlement/history')
+        .replace(queryParameters: qp);
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load settlement history: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) return [];
+    final list = decoded['receipts'];
+    if (list is! List) return [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Credit receipt detail.
+  Future<Map<String, dynamic>> fetchCreditSettlementReceipt(
+      String transactionId) async {
+    final headers = _bearerHeaders();
+    final uri = Uri.parse(
+        '$baseURL$posBasePath/settlement/receipts/${Uri.encodeComponent(transactionId)}');
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load receipt: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) throw const FormatException('Expected object');
+    return Map<String, dynamic>.from(decoded as Map);
+  }
+
+  int _sessionCounterNo() {
+    final sm = SessionManager();
+    return int.tryParse(sm.stationId ?? '') ?? 1;
+  }
+
+  /// Live pending totals for Counter Reading (X/Z data source).
+  /// [allStaff] = admin close: every cashier on this counter.
+  Future<Map<String, dynamic>> fetchCounterSummary({
+    int? counterNo,
+    bool allStaff = false,
+  }) async {
+    final headers = _bearerHeaders();
+    final cNo = counterNo ?? _sessionCounterNo();
+    final qp = <String, String>{'counterNo': '$cNo'};
+    if (allStaff) qp['allStaff'] = 'true';
+    final uri = Uri.parse('$baseURL$posBasePath/counter/summary')
+        .replace(queryParameters: qp);
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    if (response.statusCode == 403) {
+      throw Exception('Counter close is not enabled for this plan.');
+    }
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load counter summary: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) throw const FormatException('Expected object');
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  /// X = snapshot only; Z = insert `ops.counter_close` and mark sales closed.
+  /// [allStaff] = admin close: close all pending for the counter.
+  Future<Map<String, dynamic>> closeCounter({
+    required String reportType,
+    required double collectedCash,
+    int? counterNo,
+    bool allStaff = false,
+  }) async {
+    final headers = _bearerHeaders();
+    final cNo = counterNo ?? _sessionCounterNo();
+    final uri = Uri.parse('$baseURL$posBasePath/counter/close');
+    final response = await http.post(
+      uri,
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'counterNo': cNo,
+        'reportType': reportType.toUpperCase(),
+        'collectedCash': collectedCash,
+        if (allStaff) 'allStaff': true,
+      }),
+    );
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    if (response.statusCode == 403) {
+      throw Exception('Counter close is not enabled for this plan.');
+    }
+    dynamic decoded;
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    } catch (_) {
+      decoded = null;
+    }
+    if ((response.statusCode == 200 || response.statusCode == 201) &&
+        decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    final msg = decoded is Map
+        ? (decoded['message']?.toString() ?? 'Counter close failed')
+        : 'Counter close failed (${response.statusCode})';
+    throw Exception(msg);
+  }
+
+  /// Z-report history for Counter Close Reports.
+  Future<List<Map<String, dynamic>>> fetchCounterCloseHistory({
+    int? counterNo,
+    String? dateFrom,
+    String? dateTo,
+    int limit = 100,
+  }) async {
+    final headers = _bearerHeaders();
+    final cNo = counterNo ?? _sessionCounterNo();
+    final qp = <String, String>{
+      'counterNo': '$cNo',
+      'limit': '${limit.clamp(1, 500)}',
+    };
+    if (dateFrom != null && dateFrom.isNotEmpty) qp['dateFrom'] = dateFrom;
+    if (dateTo != null && dateTo.isNotEmpty) qp['dateTo'] = dateTo;
+    final uri = Uri.parse('$baseURL$posBasePath/counter/history')
+        .replace(queryParameters: qp);
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load counter history: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) return [];
+    final list = decoded['closes'];
+    if (list is! List) return [];
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> fetchCounterCloseDetail(String closeId) async {
+    final headers = _bearerHeaders();
+    final uri = Uri.parse(
+        '$baseURL$posBasePath/counter/history/${Uri.encodeComponent(closeId)}');
+    final response = await http.get(uri, headers: headers);
+    if (response.statusCode == 401) throw Exception('Unauthorized.');
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to load close detail: ${response.body.isNotEmpty ? response.body : response.statusCode}');
+    }
+    final decoded = _decode(response.body);
+    if (decoded is! Map) throw const FormatException('Expected object');
+    return Map<String, dynamic>.from(decoded);
   }
 }

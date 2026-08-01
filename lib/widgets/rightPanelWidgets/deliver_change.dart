@@ -350,7 +350,7 @@ class _DeliveryManagementDesktopPageState
         ref.read(deliveryKotsProvider.notifier).state = deliveryList.map((kot) {
           return {
             'kotMasterID': kot['kotMasterID'],
-            'kotNo': 'KOT - ${kot['KotPrefix']}${kot['KotNumber']}',
+            'kotNo': 'Job - ${kot['KotPrefix']}${kot['KotNumber']}',
             'customer': kot['CustomerName'] ?? 'Unknown Customer',
             'status': kot['KOTStatus'].toString().trim(),
             'time': DateTime.tryParse((kot['KotTime'] ?? '').toString()) ??
@@ -386,7 +386,7 @@ class _DeliveryManagementDesktopPageState
           },
         ),
         title: const Text(
-          "Delivery KOTs",
+          "Delivery Jobs",
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
@@ -444,7 +444,7 @@ class _DeliveryManagementDesktopPageState
                 });
               },
               decoration: InputDecoration(
-                hintText: "Search KOT number...",
+                hintText: "Search job number...",
                 hintStyle: const TextStyle(color: Colors.white54, fontSize: 12),
                 prefixIcon:
                     const Icon(Icons.search, size: 18, color: Colors.white54),
@@ -612,7 +612,7 @@ class _DeliveryManagementDesktopPageState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    "Multiple Pending KOTs Selected",
+                    "Multiple Pending Jobs Selected",
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
@@ -777,7 +777,7 @@ class _DeliveryManagementDesktopPageState
 
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                             content: Text(
-                                "Assigned $name to selected KOTs successfully"),
+                                "Assigned $name to selected jobs successfully"),
                             backgroundColor: Colors.green.shade700,
                           ));
                         },
@@ -809,7 +809,7 @@ class _DeliveryManagementDesktopPageState
 
     if (selectedKot == null) {
       return const Center(
-        child: Text("Select a KOT to view details",
+        child: Text("Select a job to view details",
             style: TextStyle(fontSize: 20)),
       );
     }
@@ -890,7 +890,7 @@ class _DeliveryManagementDesktopPageState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "KOT #: ${kot['kotNo']}",
+                  "Job #: ${kot['kotNo']}",
                   style: TextStyle(
                     fontSize: ResponsiveScaler.font(16),
                     fontWeight: FontWeight.bold,

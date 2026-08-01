@@ -41,7 +41,13 @@ String _buildSettlementText({
   }
 
   final billNo = result['billNo']?.toString() ?? '';
-  final paidAmount = _num(result['paidAmount']);
+  final jobNo = (result['jobNo'] ??
+          orderData['jobNo'] ??
+          orderData['JobNo'] ??
+          '')
+      .toString()
+      .trim();
+  final paidAmount = _num(result['paidAmount'] ?? orderData['paidAmount']);
   final balancePaid = _num(result['balancePaid']);
   final paymentMode = result['paymentMode']?.toString().toUpperCase() ?? 'CASH';
 
@@ -51,22 +57,71 @@ String _buildSettlementText({
   final tax1Amount = _num(orderData['tax1Amount'] ?? orderData['tax1AmountM']);
   final tax1Rate = _num(orderData['tax1Rate'] ?? orderData['tax1RateM'] ?? 0.0);
 
+  final rawSplits = result['paymentSplits'] ?? orderData['paymentSplits'];
+  final List<Map<String, dynamic>> paymentSplits = [];
+  if (rawSplits is List) {
+    for (final s in rawSplits) {
+      if (s is! Map) continue;
+      final mode = (s['payMode'] ?? s['PayMode'] ?? '').toString().trim();
+      final amount = _num(s['amount'] ?? s['billAmount']);
+      if (mode.isEmpty || amount <= 0) continue;
+      paymentSplits.add({'payMode': mode.toUpperCase(), 'amount': amount});
+    }
+  }
+
   final counterNo = orderData['counterNo']?.toString() ?? '';
   final orderNo = ((orderData['kotPrefix']?.toString() ?? '') +
           (orderData['kotNumber']?.toString() ?? ''))
       .trim();
-  final orderNoDisplay =
-      orderNo.isNotEmpty ? orderNo : (orderData['kotId']?.toString() ?? '--');
-  final orderType =
-      orderData['orderType']?.toString().toUpperCase() ?? 'DINE IN';
+  final orderNoDisplay = jobNo.isNotEmpty
+      ? jobNo
+      : (orderNo.isNotEmpty
+          ? orderNo
+          : (orderData['kotId']?.toString() ?? '--'));
   final tableName = orderData['tableName']?.toString() ??
+      orderData['chairName']?.toString() ??
       orderData['tableId']?.toString() ??
       '-';
   final waiterName = orderData['waiterName']?.toString() ??
+      orderData['stylistName']?.toString() ??
       orderData['waiterId']?.toString() ??
       '-';
   final cashierName = orderData['cashierName']?.toString() ?? 'CASHIER';
-  final comments = orderData['comments']?.toString() ?? '0';
+  final comments = orderData['comments']?.toString() ?? '';
+  final printCustomerName = customerName.trim().isNotEmpty
+      ? customerName.trim()
+      : (orderData['customerName'] ?? orderData['CustomerName'] ?? '')
+          .toString()
+          .trim();
+  final customerCode =
+      (orderData['customerCode'] ?? orderData['CustomerCode'] ?? '')
+          .toString()
+          .trim();
+  final customerMobile = (orderData['mobileNo'] ??
+          orderData['MobileNo'] ??
+          orderData['telephone'] ??
+          '')
+      .toString()
+      .trim();
+  final customerAddress =
+      (orderData['address'] ?? orderData['Address'] ?? '').toString().trim();
+  final customerTrn =
+      (orderData['taxRegNo'] ?? orderData['CustTRN'] ?? '').toString().trim();
+  final customerId = (orderData['customerId'] ??
+          orderData['CustomerID'] ??
+          result['customerId'] ??
+          '')
+      .toString()
+      .trim();
+  final nameLower = printCustomerName.toLowerCase();
+  final isWalkIn = customerId.isEmpty ||
+      customerId == '0' ||
+      nameLower.isEmpty ||
+      nameLower == 'walk-in' ||
+      nameLower == 'walkin' ||
+      nameLower == 'walk in' ||
+      nameLower == 'cash customer' ||
+      nameLower == 'select customer';
 
   final now = DateTime.now();
   final dateStr = DateFormat('dd/MMM/yyyy').format(now);
@@ -75,16 +130,36 @@ String _buildSettlementText({
   final buf = StringBuffer();
   buf.writeln(sep);
   buf.writeln(_center('Tax Invoice', width));
+  buf.writeln(_center('فاتورة ضريبية', width));
   buf.writeln(sep);
-  buf.writeln(_padRight('OrderNo : $orderNoDisplay', leftCol) + _padLeft(orderType, rightCol));
+  buf.writeln(_padRight('BILL # : $billNo', leftCol) +
+      _padLeft('$dateStr $timeStr', rightCol));
+  if (orderNoDisplay.isNotEmpty && orderNoDisplay != '--') {
+    buf.writeln('JOB #  : $orderNoDisplay');
+  }
+  buf.writeln(_padRight('COUNTER : $counterNo', leftCol) +
+      _padLeft('CASHIER : $cashierName', rightCol));
+  buf.writeln(_padRight('CHAIR : $tableName', leftCol) +
+      _padLeft('STYLIST : $waiterName', rightCol));
+  if (!isWalkIn) {
+    buf.writeln(sep);
+    buf.writeln('Customer : $printCustomerName');
+    if (customerCode.isNotEmpty) buf.writeln('Code     : $customerCode');
+    if (customerTrn.isNotEmpty) buf.writeln('TRN      : $customerTrn');
+    if (customerMobile.isNotEmpty) buf.writeln('Tel      : $customerMobile');
+    if (customerAddress.isNotEmpty) {
+      buf.writeln('Address  : $customerAddress');
+    }
+  }
+  if (comments.isNotEmpty && comments != '0') {
+    buf.writeln('Comments : $comments');
+  }
   buf.writeln(sep);
-  buf.writeln('Inv No #    $billNo');
-  buf.writeln('Inv Date : $dateStr $timeStr');
-  buf.writeln(_padRight('Cntr: $counterNo', leftCol) + _padLeft('Cashier : $cashierName', rightCol));
-  buf.writeln(_padRight('Table : $tableName', leftCol) + _padLeft('Waiter : $waiterName', rightCol));
-  buf.writeln('Comments : $comments');
-  buf.writeln(sep);
-  buf.writeln(_padRight('Description     ', 17) + _padLeft('Qty', 4) + _padLeft('Price', 8) + _padLeft('Total', 9) + (' ' * (width - 17 - 4 - 8 - 9)));
+  buf.writeln(_padRight('Description     ', 17) +
+      _padLeft('Qty', 4) +
+      _padLeft('Price', 8) +
+      _padLeft('Total', 9) +
+      (' ' * (width - 17 - 4 - 8 - 9)));
   buf.writeln(sep);
 
   final items =
@@ -111,9 +186,24 @@ String _buildSettlementText({
   buf.writeln(_padRight('TOTAL  :', leftCol) + _padLeft(netAmount.toStringAsFixed(currencyDecimals), rightCol));
   buf.writeln(sep);
   buf.writeln('Settlement : $paymentMode');
+  for (final s in paymentSplits) {
+    buf.writeln(_padRight(s['payMode'].toString(), leftCol) +
+        _padLeft(
+            (s['amount'] as num).toStringAsFixed(currencyDecimals), rightCol));
+  }
   buf.writeln(_padRight('Items : ${items.length}', leftCol) + _padLeft('Bill Amt : ${netAmount.toStringAsFixed(currencyDecimals)}', rightCol));
   buf.writeln(_padRight('Qty : ${items.length}', leftCol) + _padLeft('Paid Amt : ${paidAmount.toStringAsFixed(currencyDecimals)}', rightCol));
   buf.writeln(_padRight('', leftCol) + _padLeft('Bal. Amount: ${balancePaid.toStringAsFixed(currencyDecimals)}', rightCol));
+  final osBal = _num(
+    result['customerOsBalance'] ??
+        result['outstandingBalance'] ??
+        orderData['customerOsBalance'] ??
+        orderData['outstandingBalance'],
+  );
+  if (paymentMode == 'CREDIT' || osBal > 0.005) {
+    buf.writeln(_padRight('O/S Balance', leftCol) +
+        _padLeft(osBal.toStringAsFixed(currencyDecimals), rightCol));
+  }
   buf.writeln(sep);
   buf.writeln(_center('Tax Details', width));
   buf.writeln(sep);
@@ -135,7 +225,7 @@ String _buildKOTText({
   const width = 48;
   final sep = _buildSeparator(width);
   final data = List<Map<String, dynamic>>.from(kotDetails['data'] ?? const []);
-  if (data.isEmpty) return 'NO KOT DATA';
+  if (data.isEmpty) return 'NO JOB DATA';
   final first = data.first;
 
   String s(dynamic v, [String def = '']) =>
@@ -175,7 +265,7 @@ String _buildKOTText({
   buf.writeln(sep);
   buf.writeln(_padRight('             $kitchenLocation - ${supplyType.toUpperCase()}', width));
   buf.writeln(sep);
-  buf.writeln('KOT#$kotPrefix$kotNumber-$areaName');
+  buf.writeln('Job#$kotPrefix$kotNumber-$areaName');
   if (tableName.isNotEmpty) {
     buf.writeln('Table No - $tableName');
   }
@@ -265,5 +355,5 @@ Future<void> printKOTWeb({
     supplyType: supplyType,
     title: title,
   );
-  _openPrintWindow('KOT', text);
+  _openPrintWindow('Job', text);
 }

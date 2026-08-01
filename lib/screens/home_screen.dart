@@ -457,7 +457,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
                                 // Whoever is signed in at the till performed the
                                 // work. staffID is the BUSINESS staff id, which
-                                // is exactly what ops.salon_job_child.stylist_id
+                                // is exactly what ops.job_child.stylist_id
                                 // and sales_child.stylist_id reference — not the
                                 // surrogate PK the JWT carries in `sub`.
                                 final stylistId =
