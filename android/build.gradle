@@ -9,6 +9,28 @@ rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
+
+// AGP 8+ requires namespace on every Android library module.
+// Older pub plugins only declare package= in AndroidManifest.xml.
+subprojects { project ->
+    project.pluginManager.withPlugin("com.android.library") {
+        def android = project.extensions.findByName("android")
+        if (android != null && android.namespace == null) {
+            def manifestFile = project.file("src/main/AndroidManifest.xml")
+            if (manifestFile.exists()) {
+                def m = new XmlSlurper().parse(manifestFile)
+                def pkg = m.@package?.text()
+                if (pkg) {
+                    android.namespace = pkg
+                }
+            }
+            if (android.namespace == null && project.group) {
+                android.namespace = project.group.toString()
+            }
+        }
+    }
+}
+
 subprojects {
     project.evaluationDependsOn(":app")
 }

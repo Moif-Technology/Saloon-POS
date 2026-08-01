@@ -1093,6 +1093,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  sunmi_printer_plus:
+    dependency: "direct main"
+    description:
+      name: sunmi_printer_plus
+      sha256: "77293b7da16bdf3805c5a24ea41731978e8a31da99c3fca38a658a0778450b78"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.1"
   syncfusion_flutter_core:
     dependency: transitive
     description:
@@ -1309,14 +1317,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.0.6"
-  usb_serial:
-    dependency: "direct main"
-    description:
-      name: usb_serial
-      sha256: c5c0ada3045b21fe764da4705c0c5a43e1bb8a04d8c179f3da17e8a09b5da18f
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.991"
   usb_thermal_printer_web_pro:
     dependency: "direct main"
     description:

@@ -40,7 +40,6 @@ dependencies:
   animated_custom_dropdown: any
   window_size: any
   win32: ^5.14.0
-  usb_serial: any
   syncfusion_flutter_datagrid: any
   flutter_slidable: any
   pluto_grid: any
@@ -78,6 +77,7 @@ dependencies:
   screenshot: ^3.0.0
   package_info_plus: ^8.0.0
   url_launcher: ^6.0.0
+  sunmi_printer_plus: ^4.1.1
 
 
   

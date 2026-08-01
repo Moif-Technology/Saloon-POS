@@ -1,14 +1,8 @@
-import 'dart:io';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:my_app/config/api_config.dart';
 import 'package:my_app/core/providers/parameterProviders.dart';
-import 'package:my_app/core/providers/providers.dart';
-import 'package:my_app/services/printService/sales_viewer_receipt.dart';
-import 'package:my_app/services/printService/windows_native_settlement_printer.dart';
+import 'package:my_app/services/printService/pos_print.dart';
 
 class SalesDetailsDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> salesData;
@@ -438,47 +432,29 @@ class _SalesDetailsDialogState extends ConsumerState<SalesDetailsDialog> {
                 try {
                   final receiptData = <String, dynamic>{};
 
-                  // Windows native (physical thermal or Microsoft Print to PDF)
-                  if (!kIsWeb &&
-                      Platform.isWindows &&
-                      useWindowsNativeSalesReceiptPrint &&
-                      WindowsNativeSettlementPrinter.isSalesReceiptAvailable) {
-                    WindowsNativeSettlementPrinter.printSalesReceipt(
-                      receiptData: receiptData,
-                      currencyDecimals: decimals,
-                      onError: (msg) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(msg),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                        }
-                      },
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Receipt sent to printer (or Print to PDF).'),
-                        ),
-                      );
-                    }
-                    return;
-                  }
-
-                  // Fallback: ESC/POS (SalesViewerPrinting)
-                  ref.read(salesViewerPrintDataProvider.notifier).state =
-                      receiptData;
+                  await PosPrint.printSalesReceipt(
+                    receiptData: receiptData,
+                    currencyDecimals: decimals,
+                    onError: (msg) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(msg),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    },
+                  );
                   if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SalesViewerPrinting(),
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Receipt sent to printer.'),
                       ),
                     );
                   }
+                  return;
                 } catch (e) {
                   print("❌ Error fetching receipt data: $e");
                   if (context.mounted) {

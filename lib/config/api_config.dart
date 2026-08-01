@@ -43,6 +43,13 @@ const String posBasePath = String.fromEnvironment(
 const String receiptPrinterIP = ""; // e.g. "192.168.1.100" for network printer
 const int receiptPrinterPort = 9100;
 
+/// Android printing (settlement / sales receipt / KOT).
+/// Uses Sunmi built-in when present, else network IP, else USB ("counter" / "innerprinter").
+const bool useAndroidPrinting = true;
+
+/// Prefer Sunmi inner printer on Android when the device exposes one.
+const bool preferSunmiBuiltInPrinter = true;
+
 /// When true (Windows only), settlement receipt is printed via Windows GDI (same as VB: Courier New, same layout).
 /// Requires Windows; ignored on other platforms. Set settlementPrintPrinterNameWindows to target a specific printer, or leave empty for default.
 const bool useWindowsNativeSettlementPrint = true;
